@@ -1,0 +1,28 @@
+{
+  "name": "node-video-playground",
+  "version": "0.1.0",
+  "description": "Node.js examples for working with video files: probing, transcoding, packaging (HLS/DASH), thumbnails, quality metrics",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "ex": "tsx",
+    "probe": "tsx examples/01-probe.ts",
+    "thumb": "tsx examples/02-thumbnail.ts",
+    "transcode": "tsx examples/03-transcode.ts",
+    "hls": "tsx examples/04-hls-package.ts",
+    "quality": "tsx examples/05-quality-metrics.ts",
+    "batch": "tsx examples/06-batch-probe.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "execa": "^9.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
