@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-6-22d3ee?style=flat-square"></a>
-  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-339933?style=flat-square&logo=node.js&logoColor=white">
-  <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?style=flat-square&logo=typescript&logoColor=white">
-  <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-6.x-a78bfa?style=flat-square&logo=ffmpeg&logoColor=white">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-f472b6?style=flat-square">
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-6-2563eb?style=flat-square"></a>
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
+  <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
+  <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-6.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-6b7280?style=flat-square">
 </p>
 
 <p align="center">
