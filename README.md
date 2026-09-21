@@ -28,7 +28,7 @@ Video tooling tends to come as either a giant SDK or a wall of ffmpeg flags copi
 ## Quick start
 
 ```bash
-git clone https://github.com/vgubarenko/node-video-playground.git && cd node-video-playground
+git clone https://github.com/vovadoma/node-video-playground.git && cd node-video-playground
 npm install                      # execa + tsx + typescript, that's it
 npm run probe                    # ffprobe → typed JSON
 npm run hls                      # ABR ladder → HLS/CMAF in one pass
