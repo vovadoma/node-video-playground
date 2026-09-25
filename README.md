@@ -152,7 +152,7 @@ src/lib/
   format.ts    humanBytes / humanDuration / kbps
 examples/      01…07, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
-web/           server.ts (catalog API + Range file server) · public/ (index.html + app.js + styles.css, no build)
+web/           server.ts entry · engine/ (router, Range file server) · catalog/ (ffprobe scan, playability rules) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
 docs/          images for this README
 ```
