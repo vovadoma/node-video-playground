@@ -62,6 +62,14 @@ export class Canvas {
     }
   }
 
+  /** Filled circle. */
+  disc(cx: number, cy: number, r: number, c: Yuv) {
+    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+      const half = Math.sqrt(Math.max(0, r * r - (y - cy) ** 2));
+      for (let x = Math.ceil(cx - half); x <= Math.floor(cx + half); x++) this.px(x, y, c);
+    }
+  }
+
   rect(x0: number, y0: number, x1: number, y1: number, c: Yuv, t = 1) {
     this.line(x0, y0, x1, y0, c, t); this.line(x1, y0, x1, y1, c, t);
     this.line(x1, y1, x0, y1, c, t); this.line(x0, y1, x0, y0, c, t);

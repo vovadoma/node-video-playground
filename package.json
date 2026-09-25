@@ -22,6 +22,7 @@
     "pip": "tsx examples/11-live-pip.ts",
     "track-analyze": "tsx examples/12-track-analyze.ts",
     "track-live": "tsx examples/13-track-live.ts",
+    "intercept": "tsx examples/14-intercept.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"

@@ -12,7 +12,7 @@ import { createServer, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { pipeline, Transform, type Readable } from 'node:stream';
 import { ffmpegStream } from './ffmpeg.js';
-import { decodeFrames, encodeFrames, processingSize } from './rawframes.js';
+import { decodeFrames, decodeFramesFromFile, encodeFrames, processingSize, stillFrames } from './rawframes.js';
 import { probeSummary } from './ffprobe.js';
 import { humanBytes } from './format.js';
 
@@ -140,6 +140,13 @@ export interface LiveOptions {
 }
 
 export interface FrameProcessor {
+  /**
+   * Where frames come from: 'stream' (default) — the file read as a stream, once; 'loop' — ffmpeg reads
+   * the file and starts over at the end; 'still' — one frame of the file, repeated.
+   */
+  input?: 'stream' | 'loop' | 'still';
+  /** An extra stage between decoding and push(), e.g. throughProcess() — another program that edits the frames. */
+  stage?: (frames: Readable) => Readable;
   push(frame: Buffer): Buffer | null;
   /** One line for the stats table, e.g. the tracker state. */
   info?(): string;
@@ -214,7 +221,8 @@ export async function startLiveServer(opts: LiveOptions) {
       recent.unshift(stat);
       recent.length = Math.min(recent.length, 10);
       const secs = ((stat.endedAt - stat.startedAt) / 1000).toFixed(1);
-      console.log(`■ #${stat.id} ${secs} s  read ${humanBytes(stat.bytesIn)} from disk → sent ${humanBytes(stat.bytesOut)}  (disk reads paused ${stat.pauses}×)  [${stat.end}]${stat.info ? `  ${stat.info}` : ''}`);
+      const read = stat.bytesIn ? `read ${humanBytes(stat.bytesIn)} from disk` : 'background decoded by ffmpeg';
+      console.log(`■ #${stat.id} ${secs} s  ${read} → sent ${humanBytes(stat.bytesOut)}  (disk reads paused ${stat.pauses}×)  [${stat.end}]${stat.info ? `  ${stat.info}` : ''}`);
     });
   }
 
@@ -223,10 +231,17 @@ export async function startLiveServer(opts: LiveOptions) {
     const size = processingSize(src.width || 1280, src.height || 720);
     const processor = opts.frames!(src, params, size);
     const stat = begin(src, params, format);
-    const input = createReadStream(path.join(root, src.path), { highWaterMark: 64 * 1024 });
-    const decoded = decodeFrames(input, size, { realtime: true });
-    input.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
-    input.on('pause', () => { stat.pauses++; });
+    const file = path.join(root, src.path);
+    let decoded: Readable;
+    if (processor.input === 'loop') decoded = decodeFramesFromFile(file, size, { realtime: true, loop: true });
+    else if (processor.input === 'still') decoded = stillFrames(file, size, src.fps);
+    else {
+      const input = createReadStream(file, { highWaterMark: 64 * 1024 });
+      decoded = decodeFrames(input, size, { realtime: true });
+      input.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
+      input.on('pause', () => { stat.pauses++; });
+    }
+    if (processor.stage) decoded = processor.stage(decoded);
     const processed = new Transform({
       objectMode: true,
       transform(frame: Buffer, _enc, done) {

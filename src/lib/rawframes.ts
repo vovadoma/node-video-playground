@@ -9,6 +9,8 @@
  *   U  W/2·H/2 bytes    blue-difference chroma, one byte per 2×2 pixels
  *   V  W/2·H/2 bytes    red-difference chroma
  */
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 import { pipeline, Readable, Transform, type TransformCallback } from 'node:stream';
 import { ffmpegStream } from './ffmpeg.js';
 
@@ -63,6 +65,72 @@ export function decodeFrames(input: Readable, size: { width: number; height: num
   ]);
   // pipeline: if the consumer stops (client gone), the decoder ffmpeg and the file stream go too
   return pipeline(raw, new FrameChunker(frameBytes(size.width, size.height)), () => {});
+}
+
+/**
+ * Like decodeFrames, but ffmpeg opens the file itself — needed for `loop` (-stream_loop -1 has to seek
+ * back to the start, which a pipe can't). Endless when looping; the consumer closing stops it.
+ */
+export function decodeFramesFromFile(file: string, size: { width: number; height: number }, { realtime = false, loop = false } = {}): Readable {
+  const raw = ffmpegStream(Readable.from([]), [
+    ...(loop ? ['-stream_loop', '-1'] : []), ...(realtime ? ['-re'] : []), '-i', file,
+    '-map', '0:v:0', '-an',
+    '-vf', `scale=${size.width}:${size.height},format=yuv420p`,
+    '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1',
+  ]);
+  return pipeline(raw, new FrameChunker(frameBytes(size.width, size.height)), () => {});
+}
+
+/**
+ * A still background: one frame of `file` (at `atSec`), repeated at `fps` in real time — the only
+ * motion in the result is whatever is added later. Endless; the consumer closing stops it.
+ */
+export function stillFrames(file: string, size: { width: number; height: number }, fps: number, atSec = 0): Readable {
+  let frame: Buffer | undefined, timer: NodeJS.Timeout | undefined, next = 0;
+  const grab = async () => {
+    const one = ffmpegStream(Readable.from([]), [
+      '-ss', String(atSec), '-i', file, '-frames:v', '1', '-an',
+      '-vf', `scale=${size.width}:${size.height},format=yuv420p`, '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1',
+    ]);
+    const parts: Buffer[] = [];
+    for await (const c of one) parts.push(c as Buffer);
+    return Buffer.concat(parts);
+  };
+  return new Readable({
+    objectMode: true,
+    read() {
+      const push = () => {
+        next = Math.max(next + 1000 / fps, performance.now());
+        this.push(Buffer.from(frame!));          // a fresh copy: someone will draw on it
+      };
+      if (frame) { timer = setTimeout(push, Math.max(0, next - performance.now())); return; }
+      grab().then((f) => {
+        if (f.length !== frameBytes(size.width, size.height)) return this.destroy(new Error(`could not read a frame from ${file}`));
+        frame = f; next = performance.now(); push();
+      }, (e) => this.destroy(e));
+    },
+    destroy(err, cb) { clearTimeout(timer); cb(err); },
+  });
+}
+
+/**
+ * Send frames through ANOTHER PROCESS: its stdin gets raw yuv420p frames, its stdout must return
+ * frames of the same size. Nothing else is shared — the other side only ever sees pixels.
+ * `onLine` receives the child's stderr line by line (logs, or data meant for someone else).
+ * Closing the result kills the child.
+ */
+export function throughProcess(
+  frames: Readable, command: string, args: string[], size: { width: number; height: number },
+  onLine?: (line: string) => void,
+): Readable {
+  const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+  pipeline(frames, child.stdin, () => {});                   // EPIPE when the child is gone — expected
+  if (onLine) createInterface({ input: child.stderr }).on('line', onLine);
+  else child.stderr.resume();
+  const out = pipeline(child.stdout, new FrameChunker(frameBytes(size.width, size.height)), () => {});
+  out.on('close', () => { if (child.exitCode === null) child.kill('SIGKILL'); frames.destroy(); });
+  child.on('error', (e) => out.destroy(e));
+  return out;
 }
 
 /**

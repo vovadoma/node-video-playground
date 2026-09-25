@@ -238,6 +238,8 @@ export interface TrackerOptions {
   beta?: number;
   /** Frame size (small px): predictions that leave the frame are mirrored back — objects bounce off edges. */
   bounds?: { w: number; h: number };
+  /** How much the search radius grows with speed (× px/frame), default 1.5. Lower = stickier to a steady mover. */
+  speedGate?: number;
 }
 
 /**
@@ -269,7 +271,7 @@ export class Tracker {
     for (const t of this.active) {
       const k = t.missed + 1;
       const { px, py } = this.predict(t, k);
-      const gate = this.o.gate + Math.hypot(t.vx, t.vy) * 1.5 * k;
+      const gate = this.o.gate + Math.hypot(t.vx, t.vy) * (this.o.speedGate ?? 1.5) * k;
       blobs.forEach((b, i) => {
         const d = Math.hypot(b.x - px, b.y - py);
         if (d <= gate) pairs.push({ t, b: i, d });
@@ -325,7 +327,7 @@ export class Tracker {
  * Fold a coordinate back into [0, max] as if it bounced off both walls any number of times
  * (a triangle wave); `flipped` = an odd number of bounces, i.e. the velocity is reversed.
  */
-function bounce(p: number, max: number): [number, boolean] {
+export function bounce(p: number, max: number): [number, boolean] {
   if (max <= 0) return [0, false];
   const period = 2 * max;
   const m = ((p % period) + period) % period;
