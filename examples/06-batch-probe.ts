@@ -12,7 +12,7 @@ import { probeSummary } from '../src/lib/ffprobe.js';
 import { humanBytes } from '../src/lib/format.js';
 
 const root = process.argv[2] ?? SAMPLES_DIR;
-const MEDIA = /\.(mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|ts|m2ts|mxf|3gp|ogv)$/i;
+const MEDIA = /\.(mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|ts|m2ts|mxf|3gp|ogv|mp3|m4a|aac|ac3|eac3|dts|flac|wav|aiff?|au|ogg|opus|wma|wv|mka|amr|ra|voc|mp2|g722)$/i;
 
 function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {

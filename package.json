@@ -15,6 +15,7 @@
     "hls": "tsx examples/04-hls-package.ts",
     "quality": "tsx examples/05-quality-metrics.ts",
     "batch": "tsx examples/06-batch-probe.ts",
+    "audio": "tsx examples/07-audio.ts",
     "samples": "tsx scripts/make-samples.ts",
     "typecheck": "tsc --noEmit"
   },

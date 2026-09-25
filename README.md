@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-6-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-7-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-6.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -38,13 +38,14 @@ npm run hls                      # ABR ladder → HLS/CMAF in one pass
 
 ## Test media
 
-The repo ships its own test set in [`samples/`](samples/README.md) — 66 files, ~135 MB, every common container × codec combination plus HLS/DASH packages:
+The repo ships its own test set in [`samples/`](samples/README.md) — 113 files, ~155 MB, every common video and audio container × codec combination plus HLS/DASH packages:
 
 | Folder | What | Files |
 |---|---|---|
 | `samples/real-world/` | Real files from [projectivetech/media-samples](https://github.com/projectivetech/media-samples): MP4, MOV, MKV, WebM, AVI, FLV, WMV, MPG, MXF (incl. Avid OP-Atom DNxHD) | 11 |
 | `samples/generated/` | One 10 s 720p test pattern encoded as H.264 / H.265 / AV1 / VP8 / VP9 / MPEG-2 / MJPEG / Xvid / Sorenson / WMV2 into MP4, fMP4, MOV, MKV, WebM, TS, PS, MXF, AVI, FLV, ASF — with AAC, Opus, Vorbis, MP2, MP3, AC-3, E-AC-3, PCM audio | 24 |
 | `samples/streaming/` | HLS with TS segments + 3-rendition ABR ladder, HLS fMP4/CMAF, MPEG-DASH | 31 |
+| [`samples/audio/`](samples/audio/README.md) | Audio matrix: PCM / FLAC / ALAC / WavPack, AAC / MP3 / Opus / Vorbis, AC-3 / E-AC-3 (2.0 + 5.1) / DTS / MP2, G.711 / G.722 / G.726 / Speex, WMA — plus 15 real-world files | 47 |
 
 Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB). `npm run samples` regenerates the whole `generated/` + `streaming/` set, including those two, from the same ffmpeg recipes — so the matrix is reproducible, not just checked in. Point `SAMPLES_DIR` elsewhere to use your own media.
 
@@ -58,6 +59,7 @@ Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64
 | 04 | `npm run hls [file]` | One-pass 720/480/360p ABR ladder into HLS with fMP4 (CMAF) segments + master playlist |
 | 05 | `npm run quality` | PSNR / SSIM of every encode against the master, as a table |
 | 06 | `npm run batch [dir]` | Walk a folder, probe every media file in parallel, print a table |
+| 07 | `npm run audio [file]` | Extract audio without re-encoding, convert to Opus/MP3/AC-3/WAV, measure EBU R128 loudness, normalise with `loudnorm` |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -145,7 +147,6 @@ Copy `.env.example` to `.env` or export variables; shell always wins.
 - [ ] Server-side ad insertion: splice a bumper into a TS stream with `concat`
 - [ ] Live: SRT/RTMP input → HLS folder with a sliding window
 - [ ] Scene detection (`select='gt(scene,0.4)'`) for automatic chapters and thumbnails
-- [ ] Loudness normalisation to EBU R128 (`loudnorm`)
 - [ ] VMAF via `libvmaf` and a per-title encoding ladder
 - [ ] Job queue on BullMQ + Redis with progress over WebSocket
 

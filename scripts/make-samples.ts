@@ -121,6 +121,73 @@ if (!existsSync(path.join(dash, 'manifest.mpd'))) {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// Audio matrix: one 10 s stereo PCM master → every audio codec ffmpeg can encode
+// ---------------------------------------------------------------------------
+const aud = path.join(root, 'audio', 'generated');
+mkdirSync(aud, { recursive: true });
+const amaster = path.join(aud, 'master_pcm24_48k_stereo.wav');
+
+if (!existsSync(amaster)) {
+  await step('audio/master_pcm24_48k_stereo.wav', [
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=10',
+    '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=10',
+    '-filter_complex', '[0:a][1:a]join=inputs=2:channel_layout=stereo,volume=0.5[a]', '-map', '[a]',
+    '-c:a', 'pcm_s24le', amaster,
+  ]);
+}
+
+const to51 = ['-af', 'pan=5.1|FL=c0|FR=c1|FC=0.5*c0+0.5*c1|LFE=0.2*c0|BL=0.5*c0|BR=0.5*c1'];
+
+const audioRecipes: Recipe[] = [
+  // lossless / PCM
+  ['wav_pcm16_48k.wav', ['-c:a', 'pcm_s16le']],
+  ['wav_pcm16_44k1.wav', ['-c:a', 'pcm_s16le', '-ar', '44100']],
+  ['wav_pcm24_96k.wav', ['-c:a', 'pcm_s24le', '-ar', '96000']],
+  ['wav_adpcm_ima.wav', ['-c:a', 'adpcm_ima_wav']],
+  ['aiff_pcm16.aiff', ['-c:a', 'pcm_s16be']],
+  ['au_pcm16.au', ['-c:a', 'pcm_s16be']],
+  ['flac_lossless.flac', ['-c:a', 'flac', '-compression_level', '8']],
+  ['m4a_alac_lossless.m4a', ['-c:a', 'alac']],
+  ['wv_wavpack.wv', ['-c:a', 'wavpack']],
+  // lossy — streaming / web
+  ['m4a_aac_lc_128k.m4a', ['-c:a', 'aac', '-b:a', '128k']],
+  ['m4a_aac_lc_64k.m4a', ['-c:a', 'aac', '-b:a', '64k']],
+  ['aac_adts_128k.aac', ['-c:a', 'aac', '-b:a', '128k', '-f', 'adts']],
+  ['mp3_cbr_192k.mp3', ['-c:a', 'libmp3lame', '-b:a', '192k']],
+  ['mp3_vbr_q2.mp3', ['-c:a', 'libmp3lame', '-q:a', '2']],
+  ['opus_96k.opus', ['-c:a', 'libopus', '-b:a', '96k']],
+  ['opus_voip_24k.opus', ['-c:a', 'libopus', '-b:a', '24k', '-application', 'voip']],
+  ['webm_opus_96k.webm', ['-c:a', 'libopus', '-b:a', '96k']],
+  ['ogg_vorbis_q5.ogg', ['-c:a', 'libvorbis', '-q:a', '5']],
+  // broadcast / TV
+  ['ac3_192k.ac3', ['-c:a', 'ac3', '-b:a', '192k']],
+  ['ac3_5.1_448k.ac3', [...to51, '-c:a', 'ac3', '-b:a', '448k']],
+  ['eac3_128k.eac3', ['-c:a', 'eac3', '-b:a', '128k']],
+  ['eac3_5.1_384k.eac3', [...to51, '-c:a', 'eac3', '-b:a', '384k']],
+  ['dts_768k.dts', ['-c:a', 'dca', '-b:a', '768k', '-strict', '-2']],
+  ['mp2_192k.mp2', ['-c:a', 'mp2', '-b:a', '192k']],
+  ['mp2_twolame_192k.mp2', ['-c:a', 'libtwolame', '-b:a', '192k']],
+  // telephony / voice
+  ['g722_16k_mono.g722', ['-c:a', 'g722', '-ar', '16000', '-ac', '1']],
+  ['g726_32k_mono.wav', ['-c:a', 'g726', '-ar', '8000', '-ac', '1', '-b:a', '32k']],
+  ['wav_alaw_8k_mono.wav', ['-c:a', 'pcm_alaw', '-ar', '8000', '-ac', '1']],
+  ['wav_mulaw_8k_mono.wav', ['-c:a', 'pcm_mulaw', '-ar', '8000', '-ac', '1']],
+  ['ogg_speex_16k_mono.ogg', ['-c:a', 'libspeex', '-ar', '16000', '-ac', '1']],
+  // legacy
+  ['wma_wmav2_128k.wma', ['-c:a', 'wmav2', '-b:a', '128k']],
+];
+
+for (const [file, args] of audioRecipes) {
+  const outFile = path.join(aud, file);
+  if (existsSync(outFile)) { console.log(`skip  audio/${file} (exists)`); continue; }
+  try {
+    await step(`audio/${file}`, ['-i', amaster, ...args, outFile]);
+  } catch (e) {
+    console.log(`  !! ${file} skipped — encoder not available in this ffmpeg build`);
+  }
+}
+
 console.log(`\nDone → ${root}`);
 
 async function step(label: string, args: string[]) {
