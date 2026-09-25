@@ -17,12 +17,15 @@ import { humanBytes } from './format.js';
 
 // ---------------------------------------------------------------- delivery formats
 
-/** How the processed video reaches the browser. `video` = the filter graph's output label, e.g. "[v]". */
+/**
+ * How the processed video reaches the browser. `video` = the filter graph's output label, e.g. "[v]";
+ * `audio` = what to map as sound ("0:a:0?" = the source's first audio track, if any, or a graph label).
+ */
 export const DELIVERY = {
   mp4: {
     contentType: 'video/mp4',
-    args: (video: string) => [
-      '-map', video, '-map', '0:a:0?',
+    args: (video: string, audio: string) => [
+      '-map', video, '-map', audio,
       '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
       '-force_key_frames', 'expr:gte(t,n_forced*1)',   // a keyframe every second → a new fragment every second
       '-c:a', 'aac', '-b:a', '128k', '-ac', '2',
@@ -32,7 +35,7 @@ export const DELIVERY = {
   },
   mjpeg: {
     contentType: 'multipart/x-mixed-replace; boundary=ffmpeg',   // the mpjpeg muxer uses "ffmpeg" as boundary
-    args: (video: string) => ['-map', video, '-c:v', 'mjpeg', '-q:v', '5', '-f', 'mpjpeg', 'pipe:1'],
+    args: (video: string, _audio: string) => ['-map', video, '-c:v', 'mjpeg', '-q:v', '5', '-f', 'mpjpeg', 'pipe:1'],
   },
 } as const;
 export type Delivery = keyof typeof DELIVERY;
@@ -70,6 +73,7 @@ export interface Source {
   codec: string;
   width: number;
   height: number;
+  hasAudio: boolean;
   streamable: boolean;
   reason?: string;
 }
@@ -91,6 +95,7 @@ export async function listSources(root: string): Promise<Source[]> {
       codec: s.video.codec ?? '?',
       width: s.video.width ?? 0,
       height: s.video.height ?? 0,
+      hasAudio: Boolean(s.audio),
       streamable: indexFirst !== false,
       reason: indexFirst === false ? 'moov at the end — remux with -movflags +faststart' : undefined,
     });
@@ -105,13 +110,22 @@ export interface LiveOptions {
   subtitle: string;
   port: number;
   root: string;                 // samples folder
-  /** Extra <label>/<select> controls; every element with data-param="x" is sent as ?x=value */
+  /**
+   * Extra controls; every element with data-param="x" is sent as ?x=value.
+   * A <select data-sources="default/path"> is filled with the streamable files (e.g. a second video).
+   */
   controlsHtml: string;
   /**
-   * What ffmpeg does. Return extra inputs (after the piped source, which is input 0) and a
-   * -filter_complex graph whose video output is labelled `[v]`. `params` are the page's data-param values.
+   * What ffmpeg does. `params` are the page's data-param values; `find` looks up another source.
+   * Returns:
+   *   pipes   more files to stream from disk — they become inputs 1, 2, … (pipe:3, pipe:4, …)
+   *   inputs  extra ffmpeg inputs after those, e.g. ['-loop', '1', '-i', 'logo.png']
+   *   filter  a -filter_complex graph; input 0 is the main file; its video output is `label`
+   *   audio   what to map as sound, default '0:a:0?' (the main file's audio, if any)
    */
-  buildArgs: (source: Source, params: URLSearchParams) => { inputs?: string[]; filter: string; label: string };
+  buildArgs: (source: Source, params: URLSearchParams, find: (path: string | null) => Source | undefined) => {
+    pipes?: Source[]; inputs?: string[]; filter: string; label: string; audio?: string;
+  };
 }
 
 interface Stat {
@@ -136,17 +150,31 @@ export async function startLiveServer(opts: LiveOptions) {
 
     const params = new URLSearchParams(url.searchParams);
     params.delete('file');
-    const { inputs = [], filter, label } = opts.buildArgs(src, params);
+    const find = (p: string | null) => sources.find((s) => s.path === p);
+    const { pipes = [], inputs = [], filter, label, audio = '0:a:0?' } = opts.buildArgs(src, params, find);
+    const bad = pipes.find((p) => !p.streamable);
+    if (bad) return text(res, 422, `${bad.path}: ${bad.reason}`);
     const stat: Stat = { id: nextId++, file: src.path, params: [...params].map(([k, v]) => `${k}=${v}`).join(' '), format, startedAt: Date.now(), bytesIn: 0, bytesOut: 0, pauses: 0 };
     active.set(stat.id, stat);
     console.log(`▶ #${stat.id} ${src.path}  ${stat.params}  → ${format}`);
 
-    // disk → ffmpeg: a plain file stream, 64 KB at a time. -re = read the source at playback speed.
-    const input = createReadStream(path.join(root, src.path), { highWaterMark: 64 * 1024 });
-    const output = ffmpegStream(input, ['-re', '-i', 'pipe:0', ...inputs, '-filter_complex', filter, ...DELIVERY[format].args(label)]);
+    // disk → ffmpeg: plain file streams, 64 KB at a time. -re = read each at playback speed.
+    const open = (s: Source) => createReadStream(path.join(root, s.path), { highWaterMark: 64 * 1024 });
+    const input = open(src);
+    const extra = pipes.map(open);
+    const output = ffmpegStream(input, [
+      '-re', '-i', 'pipe:0',
+      ...extra.flatMap((_, i) => ['-re', '-i', `pipe:${3 + i}`]),
+      ...inputs,
+      // MJPEG has no sound: a graph that builds an audio label must still have its output consumed
+      '-filter_complex', format === 'mjpeg' && audio.startsWith('[') ? `${filter};${audio}anullsink` : filter,
+      ...DELIVERY[format].args(label, audio),
+    ], extra);
     // counters are attached after ffmpegStream() has piped the streams, so no chunk is missed
-    input.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
-    input.on('pause', () => { stat.pauses++; });       // pipe() pauses the file when ffmpeg is full = backpressure
+    for (const s of [input, ...extra]) {
+      s.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
+      s.on('pause', () => { stat.pauses++; });         // pipe() pauses a file when ffmpeg is full = backpressure
+    }
     output.on('data', (c: Buffer | string) => { stat.bytesOut += c.length; });
 
     // ffmpeg → browser. If the tab closes, pipeline destroys `output`, which kills ffmpeg and closes the file.
@@ -271,6 +299,11 @@ fetch('/api/sources').then((r) => r.json()).then(({ sources }) => {
     $('#file').append(og);
   }
   $('#file').value = sources.find((s) => s.path.endsWith('mkv_h264_aac.mkv'))?.path ?? sources.find((s) => s.streamable)?.path;
+  // other file pickers (e.g. the picture-in-picture video) get the same list
+  document.querySelectorAll('select[data-sources]').forEach((sel) => {
+    sel.append(...[...$('#file').children].map((og) => og.cloneNode(true)));
+    sel.value = sources.some((s) => s.path === sel.dataset.sources) ? sel.dataset.sources : $('#file').value;
+  });
 });
 
 /** file + every [data-param] control (checkbox → 1/0) */

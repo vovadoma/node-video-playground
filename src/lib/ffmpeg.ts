@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { pipeline, type Readable } from 'node:stream';
+import { pipeline, type Readable, type Writable } from 'node:stream';
 import { execa } from 'execa';
 import { FFMPEG_BIN } from './config.js';
 
@@ -77,23 +77,30 @@ export async function runFfmpegCapture(args: string[]): Promise<string> {
  *
  *   ffmpegStream(createReadStream('in.mkv'), ['-i', 'pipe:0', '-vf', 'hflip', '-f', 'matroska', 'pipe:1'])
  *
+ * More streams can be fed in via `extraInputs`: ffmpeg reads them as `pipe:3`, `pipe:4`, … (extra file
+ * descriptors of the child process), e.g. a second video for picture-in-picture.
+ *
  * Backpressure works end to end: if whoever reads the result is slow, ffmpeg blocks on stdout,
- * stops reading stdin, and `source` gets paused. Destroying the returned stream (e.g. the HTTP
- * client went away) kills ffmpeg and destroys `source`. If ffmpeg fails, the stream errors
- * with its stderr.
+ * stops reading its inputs, and the sources get paused. Destroying the returned stream (e.g. the
+ * HTTP client went away) kills ffmpeg and destroys every source. If ffmpeg fails, the stream
+ * errors with its stderr.
  */
-export function ffmpegStream(source: Readable, args: string[]): Readable {
-  const child = spawn(FFMPEG_BIN, ['-hide_banner', '-loglevel', 'error', ...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+export function ffmpegStream(source: Readable, args: string[], extraInputs: Readable[] = []): Readable {
+  const child = spawn(FFMPEG_BIN, ['-hide_banner', '-loglevel', 'error', ...args], {
+    stdio: ['pipe', 'pipe', 'pipe', ...extraInputs.map(() => 'pipe' as const)],
+  });
   const out = child.stdout;
   let stderr = '';
   child.stderr.on('data', (d: Buffer) => { stderr = (stderr + d).slice(-4000); });
 
   // EPIPE here is normal: ffmpeg stops reading once it has what it needs (-t) or was killed.
   pipeline(source, child.stdin, () => {});
+  extraInputs.forEach((input, i) => pipeline(input, child.stdio[3 + i] as Writable, () => {}));
 
   out.on('close', () => {
     if (child.exitCode === null) child.kill('SIGKILL');
     source.destroy();
+    extraInputs.forEach((input) => input.destroy());
   });
   child.on('close', (code, signal) => {
     if (code && !signal && !out.destroyed) out.destroy(new Error(`ffmpeg exited with ${code}:\n${stderr.trim()}`));
