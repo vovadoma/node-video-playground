@@ -20,6 +20,7 @@
     "live": "tsx examples/09-live-transform.ts",
     "watermark": "tsx examples/10-live-watermark.ts",
     "pip": "tsx examples/11-live-pip.ts",
+    "track-analyze": "tsx examples/12-track-analyze.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"

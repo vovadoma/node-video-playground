@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-11-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-12-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -66,6 +66,7 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 09 | `npm run live` → <http://127.0.0.1:3009> | Process video **on the fly**: file stream → ffmpeg stdin → filter (grayscale, negative, edges, mirror, blur, before/after split) → ffmpeg stdout → HTTP response. Delivered as fragmented MP4 to `<video>` or as MJPEG (`multipart/x-mixed-replace`) to `<img>`; nothing touches the disk, backpressure is end to end. Shows which files can't be streamed (MP4 with `moov` at the end → needs `+faststart`) |
 | 10 | `npm run watermark` → <http://127.0.0.1:3010> | Same live pipeline as 09, plus a logo **burned into every frame on the fly**: a transparent PNG (`examples/assets/watermark.png`) as a second, looped input → `scale` + `colorchannelmixer` (opacity) → `overlay` with x/y expressions — corner, center, or floating (bounces off the edges with `t`). Effects from 09 still apply |
 | 11 | `npm run pip` → <http://127.0.0.1:3011> | **Picture-in-picture on the fly**: two files streamed from disk into one ffmpeg process — the second one through an extra file descriptor (`pipe:3`). `setpts` aligns both at t = 0, the inset is scaled and framed with `pad`, then `overlay`; when it ends it hides or freezes (`eof_action`). Sound from the main video, the inset, or both (`amix`) |
+| 12 | `npm run track-analyze -- [file]` | **Find a small, fast-moving object offline**, in three passes over raw frames (plain TypeScript, no OpenCV): 1) per-pixel flicker map → mask; 2) three-frame difference on Y+U+V → blobs → α-β tracks (bouncing off frame edges) → rank by small × fast × long-lived × alone, re-joining pieces of one object; 3) render `output/tracker/analysis.mp4`, `trajectories.png`, `motion-heatmap.png` and write `profile.json` |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -160,7 +161,10 @@ src/lib/
   format.ts    humanBytes / humanDuration / kbps
   live.ts      live server for 09–11: streamability check (moov first?), fMP4 / MJPEG delivery, backpressure stats, page
   effects.ts   picture effects as ffmpeg filters + the before/after split graph
-examples/      01…11, one topic per file, numbered in learning order
+  rawframes.ts decodeFrames() / encodeFrames(): video ⇄ raw yuv420p frames as Node Buffers
+  motion.ts    motion detection & tracking: three-frame difference, blobs, α-β tracker, scoring
+  draw.ts      drawing into yuv420p: lines, circles, crosshair, brackets, a 3×5 pixel font
+examples/      01…12, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
 web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
