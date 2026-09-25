@@ -1,7 +1,7 @@
 {
   "name": "node-video-playground",
   "version": "0.1.0",
-  "description": "Node.js examples for working with video files: probing, transcoding, packaging (HLS/DASH), thumbnails, quality metrics",
+  "description": "Node.js examples for working with video files: probing, transcoding, packaging (HLS/DASH), thumbnails, audio, quality metrics",
   "type": "module",
   "private": true,
   "engines": {
