@@ -10,8 +10,9 @@
 import { closeSync, createReadStream, openSync, readdirSync, readSync, statSync } from 'node:fs';
 import { createServer, type ServerResponse } from 'node:http';
 import path from 'node:path';
-import { pipeline } from 'node:stream';
+import { pipeline, Transform, type Readable } from 'node:stream';
 import { ffmpegStream } from './ffmpeg.js';
+import { decodeFrames, encodeFrames, processingSize } from './rawframes.js';
 import { probeSummary } from './ffprobe.js';
 import { humanBytes } from './format.js';
 
@@ -73,6 +74,7 @@ export interface Source {
   codec: string;
   width: number;
   height: number;
+  fps: number;
   hasAudio: boolean;
   streamable: boolean;
   reason?: string;
@@ -95,6 +97,7 @@ export async function listSources(root: string): Promise<Source[]> {
       codec: s.video.codec ?? '?',
       width: s.video.width ?? 0,
       height: s.video.height ?? 0,
+      fps: s.video.fps || 30,
       hasAudio: Boolean(s.audio),
       streamable: indexFirst !== false,
       reason: indexFirst === false ? 'moov at the end — remux with -movflags +faststart' : undefined,
@@ -108,6 +111,8 @@ export async function listSources(root: string): Promise<Source[]> {
 export interface LiveOptions {
   title: string;
   subtitle: string;
+  /** The pipeline diagram under the title (plain text). */
+  flow?: string;
   port: number;
   root: string;                 // samples folder
   /**
@@ -123,13 +128,25 @@ export interface LiveOptions {
    *   filter  a -filter_complex graph; input 0 is the main file; its video output is `label`
    *   audio   what to map as sound, default '0:a:0?' (the main file's audio, if any)
    */
-  buildArgs: (source: Source, params: URLSearchParams, find: (path: string | null) => Source | undefined) => {
+  buildArgs?: (source: Source, params: URLSearchParams, find: (path: string | null) => Source | undefined) => {
     pipes?: Source[]; inputs?: string[]; filter: string; label: string; audio?: string;
   };
+  /**
+   * Instead of an ffmpeg filter graph: let Node touch every frame. The file is decoded into raw
+   * yuv420p frames of `size` (src/lib/rawframes.ts), `push()` gets each one and returns a frame to
+   * send (or null to hold it back), and a second ffmpeg encodes the result. No sound in this mode.
+   */
+  frames?: (source: Source, params: URLSearchParams, size: { width: number; height: number }) => FrameProcessor;
+}
+
+export interface FrameProcessor {
+  push(frame: Buffer): Buffer | null;
+  /** One line for the stats table, e.g. the tracker state. */
+  info?(): string;
 }
 
 interface Stat {
-  id: number; file: string; params: string; format: string;
+  id: number; file: string; params: string; format: string; info?: string;
   startedAt: number; endedAt?: number; bytesIn: number; bytesOut: number; pauses: number; end?: string;
 }
 
@@ -150,13 +167,13 @@ export async function startLiveServer(opts: LiveOptions) {
 
     const params = new URLSearchParams(url.searchParams);
     params.delete('file');
+    if (opts.frames) return streamFrames(res, src, params, format);
+    if (!opts.buildArgs) return text(res, 500, 'example defines neither buildArgs nor frames');
     const find = (p: string | null) => sources.find((s) => s.path === p);
     const { pipes = [], inputs = [], filter, label, audio = '0:a:0?' } = opts.buildArgs(src, params, find);
     const bad = pipes.find((p) => !p.streamable);
     if (bad) return text(res, 422, `${bad.path}: ${bad.reason}`);
-    const stat: Stat = { id: nextId++, file: src.path, params: [...params].map(([k, v]) => `${k}=${v}`).join(' '), format, startedAt: Date.now(), bytesIn: 0, bytesOut: 0, pauses: 0 };
-    active.set(stat.id, stat);
-    console.log(`▶ #${stat.id} ${src.path}  ${stat.params}  → ${format}`);
+    const stat = begin(src, params, format);
 
     // disk → ffmpeg: plain file streams, 64 KB at a time. -re = read each at playback speed.
     const open = (s: Source) => createReadStream(path.join(root, s.path), { highWaterMark: 64 * 1024 });
@@ -175,9 +192,20 @@ export async function startLiveServer(opts: LiveOptions) {
       s.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
       s.on('pause', () => { stat.pauses++; });         // pipe() pauses a file when ffmpeg is full = backpressure
     }
-    output.on('data', (c: Buffer | string) => { stat.bytesOut += c.length; });
 
-    // ffmpeg → browser. If the tab closes, pipeline destroys `output`, which kills ffmpeg and closes the file.
+    send(res, output, stat, format);
+  }
+
+  function begin(src: Source, params: URLSearchParams, format: Delivery): Stat {
+    const stat: Stat = { id: nextId++, file: src.path, params: [...params].map(([k, v]) => `${k}=${v}`).join(' '), format, startedAt: Date.now(), bytesIn: 0, bytesOut: 0, pauses: 0 };
+    active.set(stat.id, stat);
+    console.log(`▶ #${stat.id} ${src.path}  ${stat.params}  → ${format}`);
+    return stat;
+  }
+
+  /** ffmpeg → browser. If the tab closes, pipeline destroys `output`, which kills ffmpeg(s) and closes the file. */
+  function send(res: ServerResponse, output: Readable, stat: Stat, format: Delivery) {
+    output.on('data', (c: Buffer | string) => { stat.bytesOut += c.length; });
     res.writeHead(200, { 'Content-Type': DELIVERY[format].contentType, 'Cache-Control': 'no-store' });
     pipeline(output, res, (err) => {
       stat.endedAt = Date.now();
@@ -186,8 +214,29 @@ export async function startLiveServer(opts: LiveOptions) {
       recent.unshift(stat);
       recent.length = Math.min(recent.length, 10);
       const secs = ((stat.endedAt - stat.startedAt) / 1000).toFixed(1);
-      console.log(`■ #${stat.id} ${secs} s  read ${humanBytes(stat.bytesIn)} from disk → sent ${humanBytes(stat.bytesOut)}  (disk reads paused ${stat.pauses}×)  [${stat.end}]`);
+      console.log(`■ #${stat.id} ${secs} s  read ${humanBytes(stat.bytesIn)} from disk → sent ${humanBytes(stat.bytesOut)}  (disk reads paused ${stat.pauses}×)  [${stat.end}]${stat.info ? `  ${stat.info}` : ''}`);
     });
+  }
+
+  /** disk ─▶ ffmpeg (decode to raw frames) ─▶ Node: processor.push(frame) ─▶ ffmpeg (encode) ─▶ browser */
+  function streamFrames(res: ServerResponse, src: Source, params: URLSearchParams, format: Delivery) {
+    const size = processingSize(src.width || 1280, src.height || 720);
+    const processor = opts.frames!(src, params, size);
+    const stat = begin(src, params, format);
+    const input = createReadStream(path.join(root, src.path), { highWaterMark: 64 * 1024 });
+    const decoded = decodeFrames(input, size, { realtime: true });
+    input.on('data', (c: Buffer | string) => { stat.bytesIn += c.length; });
+    input.on('pause', () => { stat.pauses++; });
+    const processed = new Transform({
+      objectMode: true,
+      transform(frame: Buffer, _enc, done) {
+        const out = processor.push(frame);
+        stat.info = processor.info?.();
+        done(null, out ?? undefined);
+      },
+    });
+    pipeline(decoded, processed, () => {});
+    send(res, encodeFrames(processed, { ...size, fps: src.fps }, DELIVERY[format].args('0:v:0', '0:a:0?')), stat, format);
   }
 
   const page = renderPage(opts);
@@ -221,7 +270,7 @@ function json(res: ServerResponse, body: unknown) {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function renderPage({ title, subtitle, controlsHtml }: LiveOptions): string {
+function renderPage({ title, subtitle, controlsHtml, flow }: LiveOptions): string {
   return /* html */ `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
@@ -257,7 +306,7 @@ function renderPage({ title, subtitle, controlsHtml }: LiveOptions): string {
 <header><div>
   <h1>${esc(title)}</h1>
   <p>${esc(subtitle)}</p>
-  <div class="flow">disk ─ createReadStream ─▶ ffmpeg stdin ─ filters ─▶ ffmpeg stdout ─▶ HTTP response ─▶ &lt;video&gt; / &lt;img&gt;</div>
+  <div class="flow">${esc(flow ?? 'disk ─ createReadStream ─▶ ffmpeg stdin ─ filters ─▶ ffmpeg stdout ─▶ HTTP response ─▶ <video> / <img>')}</div>
 </div></header>
 <main>
   <div class="panel">
@@ -276,7 +325,7 @@ function renderPage({ title, subtitle, controlsHtml }: LiveOptions): string {
     <div class="note" id="note"></div>
   </div>
   <div class="panel">
-    <table><thead><tr><th>#</th><th>file</th><th>settings</th><th>delivery</th><th>time</th><th>read from disk</th><th>sent</th><th>disk reads paused</th><th>status</th></tr></thead>
+    <table><thead><tr><th>#</th><th>file</th><th>settings</th><th>delivery</th><th>time</th><th>read from disk</th><th>sent</th><th>disk reads paused</th><th>status</th><th>info</th></tr></thead>
     <tbody id="stats"></tbody></table>
     <div class="note">"Disk reads paused" = backpressure: the browser (or ffmpeg) was full, so reading the file waited.</div>
   </div>
@@ -345,7 +394,7 @@ async function poll() {
       const tr = document.createElement('tr');
       tr.append(cell(s.id), cell(s.file.split('/').pop()), cell(s.params), cell(s.format),
         cell((((s.endedAt ?? now) - s.startedAt) / 1000).toFixed(1) + ' s', 'num'), cell(mb(s.bytesIn), 'num'),
-        cell(mb(s.bytesOut), 'num'), cell(s.pauses + '×', 'num'), cell(s.end ?? 'streaming', s.end ? '' : 'live'));
+        cell(mb(s.bytesOut), 'num'), cell(s.pauses + '×', 'num'), cell(s.end ?? 'streaming', s.end ? '' : 'live'), cell(s.info ?? ''));
       return tr;
     }));
   } catch {}

@@ -402,3 +402,140 @@ export function scoreTrack(s: TrackStats, r: ScoreRules) {
   return { score: factors.small * factors.fast * factors.long * factors.alone, factors };
 }
 
+// ---------------------------------------------------------------- live: follow one target
+
+/** What we look for, from the offline analysis (relative units, so it survives a different frame size). */
+export interface TargetProfile {
+  size: number;                 // median bbox side / frame width
+  speed: number;                // median speed (px/s) / frame width
+  color?: { u: number; v: number };
+}
+
+export type TargetState = 'SEARCH' | 'LOCK' | 'LOST';
+
+export interface TargetFix {
+  state: TargetState;
+  frame: Buffer;                // the frame this fix belongs to (one behind the input)
+  index: number;
+  x?: number; y?: number;       // full-res px (LOCK / LOST)
+  speed?: number;               // full-res px/s
+  match?: number;               // 0…1 how well the locked track fits the profile
+  trackId?: number;
+  trail: { x: number; y: number }[];
+  candidates: number;           // tracks considered while searching
+}
+
+/**
+ * Follows the one object that matches `profile`. SEARCH: among young tracks (≥ 3 measurements) pick the
+ * best match by size, speed, colour and isolation → LOCK. LOCK: stay on that track; without a
+ * measurement it coasts on its velocity (LOST) for up to `maxMissed` frames, then SEARCH again.
+ */
+export class TargetTracker {
+  state: TargetState = 'SEARCH';
+  /** Blobs of the frame the last fix belongs to (small-image px) — for showing what the detector sees. */
+  blobs: Blob[] = [];
+  private readonly small: { w: number; h: number };
+  private readonly detector: MotionDetector;
+  private readonly tracker: Tracker;
+  private locked?: Track;
+  private quality = 0;                          // running match of the locked track (clean measurements only)
+  private clean = 0;                            // clean measurements since the lock
+  private readonly rejected = new Map<number, number>();   // track id → frame until which it may not be locked again
+  private prevFrame?: Buffer;
+  private index = -1;
+
+  constructor(
+    private readonly width: number,
+    private readonly height: number,
+    private readonly factor: number,
+    private readonly fps: number,
+    private readonly profile: TargetProfile,
+    opts: { threshold: number; mask?: Uint8Array; maxMissed?: number },
+  ) {
+    this.small = { w: Math.floor(width / factor), h: Math.floor(height / factor) };
+    // (bounds for the tracker are the small image size)
+    const mask = opts.mask?.length === this.small.w * this.small.h ? opts.mask : undefined;
+    this.detector = new MotionDetector(this.small.w, this.small.h, { threshold: opts.threshold, mask });
+    this.tracker = new Tracker({ gate: 4, maxMissed: opts.maxMissed ?? 8, isolationRadius: 8, bounds: this.small });
+  }
+
+  /**
+   * How well a track fits the profile, 0…1: log-normal closeness of size and speed (both medians of the
+   * last measurements — robust to a merged blob or a jerky filter), times "alone". Colour only helps
+   * to pick among candidates when acquiring: once locked, the sampled colour often hits the background.
+   */
+  match(t: Track, frame: Buffer, withColor = true): number {
+    const pts = t.points.filter((p) => !p.coasted).slice(-8);
+    if (pts.length < 5) return 0;                // too young to judge its size and speed
+    const close = (value: number, want: number, sigma: number) =>
+      want > 0 && value > 0 ? Math.exp(-(Math.log(value / want) ** 2) / (2 * sigma * sigma)) : 0;
+    const size = median(pts.map((p) => Math.max(p.w, p.h))) * this.factor / this.width;
+    const steps = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y) / (p.f - pts[i].f || 1));
+    const speed = median(steps) * this.factor * this.fps / this.width;
+    let m = close(size, this.profile.size, 0.6) * close(speed, this.profile.speed, 0.7);
+    m *= pts.filter((p) => p.neighbours === 0).length / pts.length;             // alone
+    if (withColor && this.profile.color) {
+      const c = colorAt(frame, this.width, this.height, (t.x + 0.5) * this.factor, (t.y + 0.5) * this.factor, this.factor);
+      const d = Math.hypot(c.u - this.profile.color.u, c.v - this.profile.color.v);
+      m *= 0.5 + 0.5 * Math.exp(-(d * d) / (2 * 40 * 40));                  // a hint, not a veto
+    }
+    return m;
+  }
+
+  /** Push the next decoded frame; returns the fix for the PREVIOUS frame (or null at the very start). */
+  push(frame: Buffer): TargetFix | null {
+    const g = motionFrame(frame, this.width, this.height, this.factor);
+    const blobs = this.detector.push(g);
+    const out = this.prevFrame;
+    this.prevFrame = frame;
+    this.index++;
+    if (!out) return null;
+    if (!blobs) return { state: this.state, frame: out, index: this.index - 1, trail: [], candidates: 0 };
+    this.blobs = blobs;
+
+    const active = this.tracker.update(this.index - 1, blobs);
+    if (this.locked && !active.includes(this.locked)) this.locked = undefined;   // coasted too long
+    if (this.locked && !this.locked.missed) {
+      // Keep checking that we still follow the right thing — but only on clean measurements: when the
+      // target crosses something bigger their blobs merge for a few frames, which is an occlusion, not
+      // proof of a wrong lock. Drop a lock that keeps failing on clean frames (and don't retake it for ~3 s).
+      const last = this.locked.points.at(-1)!;
+      const size = Math.max(last.w, last.h) * this.factor / this.width;
+      if (size < this.profile.size * 2.5 && size > this.profile.size / 2.5) {
+        this.quality = 0.85 * this.quality + 0.15 * this.match(this.locked, out, false);
+        this.clean++;
+        if (this.clean > 10 && this.quality < 0.2) {
+          this.rejected.set(this.locked.id, this.index + 3 * this.fps);
+          this.locked = undefined;
+        }
+      }
+    }
+
+    let candidates = 0;
+    if (!this.locked) {
+      for (const [id, until] of this.rejected) if (until <= this.index) this.rejected.delete(id);
+      let best: Track | undefined, bestM = 0.6;                                   // below = not our object
+      for (const t of active) {
+        if (t.missed || (this.rejected.get(t.id) ?? -1) > this.index) continue;
+        candidates++;
+        const m = this.match(t, out);
+        if (m > bestM) { best = t; bestM = m; }
+      }
+      this.locked = best;
+      this.quality = bestM;
+      this.clean = 0;
+    }
+
+    const t = this.locked;
+    this.state = !t ? 'SEARCH' : t.missed ? 'LOST' : 'LOCK';
+    if (!t) return { state: this.state, frame: out, index: this.index - 1, trail: [], candidates };
+    const full = (v: number) => (v + 0.5) * this.factor;
+    return {
+      state: this.state, frame: out, index: this.index - 1, candidates, trackId: t.id,
+      x: full(t.x), y: full(t.y),
+      speed: Math.hypot(t.vx, t.vy) * this.factor * this.fps,
+      match: t.missed ? undefined : this.match(t, out, false),
+      trail: t.points.slice(-30).map((p) => ({ x: full(p.x), y: full(p.y) })),
+    };
+  }
+}
