@@ -38,14 +38,14 @@ npm run hls                      # ABR ladder → HLS/CMAF in one pass
 
 ## Test media
 
-The repo ships its own test set in [`samples/`](samples/README.md) — 113 files, ~155 MB, every common video and audio container × codec combination plus HLS/DASH packages:
+The repo ships its own test set in [`samples/`](samples/README.md) — 180 files, ~195 MB, every common video and audio container × codec combination plus HLS/DASH packages:
 
 | Folder | What | Files |
 |---|---|---|
 | `samples/real-world/` | Real files from [projectivetech/media-samples](https://github.com/projectivetech/media-samples): MP4, MOV, MKV, WebM, AVI, FLV, WMV, MPG, MXF (incl. Avid OP-Atom DNxHD) | 11 |
 | `samples/generated/` | One 10 s 720p test pattern encoded as H.264 / H.265 / AV1 / VP8 / VP9 / MPEG-2 / MJPEG / Xvid / Sorenson / WMV2 into MP4, fMP4, MOV, MKV, WebM, TS, PS, MXF, AVI, FLV, ASF — with AAC, Opus, Vorbis, MP2, MP3, AC-3, E-AC-3, PCM audio | 24 |
 | `samples/streaming/` | HLS with TS segments + 3-rendition ABR ladder, HLS fMP4/CMAF, MPEG-DASH | 31 |
-| [`samples/audio/`](samples/audio/README.md) | Audio matrix: PCM / FLAC / ALAC / WavPack, AAC / MP3 / Opus / Vorbis, AC-3 / E-AC-3 (2.0 + 5.1) / DTS / MP2, G.711 / G.722 / G.726 / Speex, WMA — plus 15 real-world files | 47 |
+| [`samples/audio/`](samples/audio/README.md) | Three openly licensed masters — a spoken sentence (LibriSpeech), a jazz track (Kevin MacLeod), an orchestral excerpt (Brahms) — each encoded into 31 variants: PCM / FLAC / ALAC / WavPack, AAC / MP3 / Opus / Vorbis, AC-3 / E-AC-3 (2.0 + 5.1) / DTS / MP2, G.711 / G.722 / G.726 / Speex, WMA — plus 15 real-world files | 114 |
 
 Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB). `npm run samples` regenerates the whole `generated/` + `streaming/` set, including those two, from the same ffmpeg recipes — so the matrix is reproducible, not just checked in. Point `SAMPLES_DIR` elsewhere to use your own media.
 
@@ -152,4 +152,4 @@ Copy `.env.example` to `.env` or export variables; shell always wins.
 
 ## License
 
-[MIT](LICENSE). Generated test patterns come from ffmpeg's `testsrc2`; real-world samples from [projectivetech/media-samples](https://github.com/projectivetech/media-samples).
+[MIT](LICENSE). Generated video test patterns come from ffmpeg's `testsrc2`; real-world samples from [projectivetech/media-samples](https://github.com/projectivetech/media-samples); audio masters are CC BY / Public Domain recordings via [librosa/data](https://github.com/librosa/data) — see [`samples/audio/masters/LICENSES.md`](samples/audio/masters/LICENSES.md).

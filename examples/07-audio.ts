@@ -10,12 +10,14 @@ import { runFfmpeg, runFfmpegCapture } from '../src/lib/ffmpeg.js';
 import { probeSummary } from '../src/lib/ffprobe.js';
 import { humanBytes } from '../src/lib/format.js';
 
-const input = process.argv[2] ?? sample('generated/mp4_h264_aac.mp4');
+const input = process.argv[2] ?? sample('audio/masters/speech_librispeech_16k_mono.wav');
 const src = await probeSummary(input);
 console.log(`Input audio: ${src.audio?.codec} ${src.audio?.sampleRate} Hz, ${src.audio?.channels} ch\n`);
 
-// 1. Extract the audio track without re-encoding (container change only)
-const extracted = out('audio/extracted.m4a');
+// 1. Extract the audio track without re-encoding (container change only).
+//    Matroska (.mka) accepts any codec — PCM, AAC, AC-3 … — so it's a safe target for stream copy;
+//    for AAC you could use .m4a, for AC-3 a raw .ac3, but those refuse PCM.
+const extracted = out('audio/extracted.mka');
 await runFfmpeg(['-i', input, '-vn', '-c:a', 'copy', extracted]);
 console.log(`Extracted (copy):  ${extracted}  ${humanBytes(statSync(extracted).size)}`);
 
