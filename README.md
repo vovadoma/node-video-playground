@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <b>Small, readable Node.js recipes for the video operations a telecom / OTT backend runs every day.</b><br>
-  Probe a file, transcode it, package it for streaming, cut thumbnails, measure quality — each one a single script you can lift into a real service.
+  <b>Small, readable Node.js recipes for the video and audio operations a telecom / OTT backend runs every day.</b><br>
+  Probe a file, transcode it, package it for streaming, cut thumbnails, measure quality, normalise loudness — each one a single script you can lift into a real service.
 </p>
 
 ---
@@ -32,22 +32,23 @@ git clone https://github.com/vovadoma/node-video-playground.git && cd node-video
 npm install                      # execa + tsx + typescript, that's it
 npm run probe                    # ffprobe → typed JSON
 npm run hls                      # ABR ladder → HLS/CMAF in one pass
+npm run audio                    # EBU R128 loudness + loudnorm on a real voice recording
 ```
 
 **Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional.
 
 ## Test media
 
-The repo ships its own test set in [`samples/`](samples/README.md) — 180 files, ~195 MB, every common video and audio container × codec combination plus HLS/DASH packages:
+The repo ships its own test set in [`samples/`](samples/README.md) — 179 files, ~195 MB, every common video and audio container × codec combination plus HLS/DASH packages. All of it is either generated from test patterns or openly licensed (CC BY / Public Domain), and every file has been validated with `ffprobe`:
 
 | Folder | What | Files |
 |---|---|---|
 | `samples/real-world/` | Real files from [projectivetech/media-samples](https://github.com/projectivetech/media-samples): MP4, MOV, MKV, WebM, AVI, FLV, WMV, MPG, MXF (incl. Avid OP-Atom DNxHD) | 11 |
-| `samples/generated/` | One 10 s 720p test pattern encoded as H.264 / H.265 / AV1 / VP8 / VP9 / MPEG-2 / MJPEG / Xvid / Sorenson / WMV2 into MP4, fMP4, MOV, MKV, WebM, TS, PS, MXF, AVI, FLV, ASF — with AAC, Opus, Vorbis, MP2, MP3, AC-3, E-AC-3, PCM audio | 24 |
+| `samples/generated/` | One 10 s 720p test pattern encoded as H.264 / H.265 / AV1 / VP8 / VP9 / MPEG-2 / MJPEG / Xvid / Sorenson / WMV2 into MP4, fMP4, MOV, MKV, WebM, TS, PS, MXF, AVI, FLV, ASF — with AAC, Opus, Vorbis, MP2, MP3, AC-3, E-AC-3, PCM audio | 23 |
 | `samples/streaming/` | HLS with TS segments + 3-rendition ABR ladder, HLS fMP4/CMAF, MPEG-DASH | 31 |
-| [`samples/audio/`](samples/audio/README.md) | Three openly licensed masters — a spoken sentence (LibriSpeech), a jazz track (Kevin MacLeod), an orchestral excerpt (Brahms) — each encoded into 31 variants: PCM / FLAC / ALAC / WavPack, AAC / MP3 / Opus / Vorbis, AC-3 / E-AC-3 (2.0 + 5.1) / DTS / MP2, G.711 / G.722 / G.726 / Speex, WMA — plus 15 real-world files | 114 |
+| [`samples/audio/`](samples/audio/README.md) | Three openly licensed masters — the **same spoken sentence** (LibriSpeech), a jazz track (Kevin MacLeod) and an orchestral excerpt (Brahms) — each encoded into the same 31 variants: PCM / FLAC / ALAC / WavPack, AAC / MP3 / Opus / Vorbis, AC-3 / E-AC-3 (2.0 + 5.1) / DTS / MP2, G.711 / G.722 / G.726 / Speex, WMA. Plus 15 real-world files | 111 |
 
-Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB). `npm run samples` regenerates the whole `generated/` + `streaming/` set, including those two, from the same ffmpeg recipes — so the matrix is reproducible, not just checked in. Point `SAMPLES_DIR` elsewhere to use your own media.
+Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB). `npm run samples` regenerates the whole `generated/`, `streaming/` and `audio/generated/` set, including those two, from the same ffmpeg recipes — so the matrix is reproducible, not just checked in. Point `SAMPLES_DIR` elsewhere to use your own media.
 
 ## Examples
 
@@ -59,7 +60,7 @@ Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64
 | 04 | `npm run hls -- [file]` | One-pass 720/480/360p ABR ladder into HLS with fMP4 (CMAF) segments + master playlist |
 | 05 | `npm run quality` | PSNR / SSIM of the `generated/` sample encodes (MP4 · MKV · WebM) against `master_h264_720p.mp4`, as a table |
 | 06 | `npm run batch -- [dir]` | Walk a folder, probe every media file in parallel, print a table |
-| 07 | `npm run audio -- [file]` | Extract audio without re-encoding, convert to Opus/MP3/AC-3/WAV, measure EBU R128 loudness, normalise with `loudnorm` |
+| 07 | `npm run audio -- [file]` | Extract the audio track without re-encoding, convert to Opus / MP3 / AC-3 / WAV, measure EBU R128 loudness (`ebur128`), normalise to −16 LUFS with `loudnorm` — on a real voice recording by default |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -115,6 +116,21 @@ webm_vp9_opus.webm   1.59 MB   37.12  0.9792
 360p/index.m3u8
 ```
 
+**07 — loudness on the LibriSpeech sentence** (`samples/audio/masters/speech_librispeech_16k_mono.wav`):
+
+```
+Input audio: pcm_s16le 16000 Hz, 1 ch
+
+Extracted (copy):  output/audio/extracted.mka   436.6 KB
+Converted:         output/audio/opus_64k.opus    118.9 KB
+Converted:         output/audio/mp3_128k.mp3     219.4 KB
+Converted:         output/audio/ac3_192k.ac3     327.4 KB
+Converted:         output/audio/pcm16_48k.wav     1.28 MB
+
+Loudness (EBU R128): integrated -27.9 LUFS, range 3.1 LU, true peak -7.4 dBTP
+Normalised to -16 LUFS → measured -16.5 LUFS
+```
+
 ## How it's put together
 
 ```
@@ -123,9 +139,9 @@ src/lib/
   ffprobe.ts   probe() → typed ProbeResult · probeSummary() for the common fields
   ffmpeg.ts    runFfmpeg() with -progress parsing & callbacks · runFfmpegCapture() for filter stats
   format.ts    humanBytes / humanDuration / kbps
-examples/      01…06, one topic per file, numbered in learning order
+examples/      01…07, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
-samples/       test media (see samples/README.md for the full catalog)
+samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
 docs/          images for this README
 ```
 

@@ -1,6 +1,8 @@
 # Test Video Sample Catalog
 
-Location in the repo: `samples/` (66 files checked in, ~135 MB). Two large files (ProRes HQ `.mov`, DNxHR HQ `.mxf`) are git-ignored — run `npm run samples` to regenerate them. Every file has been validated with `ffprobe`.
+Video part of the repo's test set: `samples/real-world/`, `samples/generated/`, `samples/streaming/` — 65 files, ~130 MB. The audio set has its own catalog in [`audio/README.md`](audio/README.md). Every file has been validated with `ffprobe`.
+
+Two large files (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB) are git-ignored because of GitHub's file-size limits — run `npm run samples` to regenerate them (and anything else in `generated/` and `streaming/`) with the same ffmpeg recipes.
 
 Three groups:
 
@@ -86,7 +88,7 @@ OP-Atom is the Avid flavour of MXF: video and each audio track live in separate 
 | hls_fmp4_cmaf/ | HLS, fMP4 (CMAF) | `index.m3u8`, `init.mp4`, `.m4s` segments |
 | dash/ | MPEG-DASH | `manifest.mpd` (SegmentTemplate + Timeline), 2 video representations (720p/360p) + 1 audio |
 
-To play locally: `ffplay streaming/hls_ts_abr/master.m3u8`, or run `python3 -m http.server` inside `streaming/` and open it in hls.js / dash.js / Safari.
+To play locally: `ffplay samples/streaming/hls_ts_abr/master.m3u8`, or run `python3 -m http.server` inside `samples/streaming/` and open it in hls.js / dash.js / Safari. `npm run hls` builds a fresh package into `output/hls/`.
 
 ## What's missing and where to get it
 
@@ -106,4 +108,5 @@ ffmpeg -f lavfi -i "testsrc2=size=1280x720:rate=30:duration=10" \
 # every other file is `ffmpeg -i master_h264_720p.mp4 -c:v <codec> -c:a <audio> <file>`
 ```
 
-Date: 2026-09-21.
+The exact arguments for every file live in [`scripts/make-samples.ts`](../scripts/make-samples.ts).
+

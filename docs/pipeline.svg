@@ -55,6 +55,6 @@
     <path class="head" d="M0 6 a6 6 0 0 1 6 -6 h168 a6 6 0 0 1 6 6 v26 h-180 z"/>
     <text class="t" x="90" y="22" text-anchor="middle">measure</text>
     <text class="s" x="90" y="60" text-anchor="middle">PSNR · SSIM · VMAF</text>
-    <text class="n" x="90" y="84" text-anchor="middle">example 05</text>
+    <text class="n" x="90" y="84" text-anchor="middle">examples 05 · 07</text>
   </g>
 </svg>
