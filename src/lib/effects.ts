@@ -1,5 +1,5 @@
 /**
- * Picture effects for the live examples (09 and later): each is a plain ffmpeg video filter.
+ * Picture effects for the live examples (09, 10): each is a plain ffmpeg video filter.
  */
 
 export const EFFECTS: Record<string, { label: string; vf: string }> = {

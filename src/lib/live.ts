@@ -1,5 +1,5 @@
 /**
- * Live processing server for the live examples (09 and later): a file is read from disk as a stream, piped
+ * Live processing server shared by examples 09 and 10: a file is read from disk as a stream, piped
  * through ffmpeg and sent to the browser while it is being produced. Nothing is written to disk.
  *
  *   disk ─ createReadStream ─▶ ffmpeg stdin ─ your filters ─▶ ffmpeg stdout ─▶ HTTP response ─▶ <video> / <img>

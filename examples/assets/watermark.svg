@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="128" viewBox="0 0 640 128">
+  <!-- Watermark for example 10. Rendered to watermark.png (transparent background) with headless Chrome. -->
+  <defs>
+    <filter id="shadow" x="-10%" y="-30%" width="120%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity=".55"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="12" y="14" width="100" height="100" rx="22" fill="#2563eb"/>
+    <rect x="34" y="68" width="16" height="26" rx="3" fill="#fff" opacity=".6"/>
+    <rect x="54" y="52" width="16" height="42" rx="3" fill="#fff" opacity=".82"/>
+    <rect x="74" y="34" width="16" height="60" rx="3" fill="#fff"/>
+    <text x="134" y="74" fill="#fff" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="700" letter-spacing="-1">node-video-playground</text>
+    <text x="136" y="104" fill="#fff" opacity=".85" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="500" letter-spacing="3">LIVE WATERMARK</text>
+  </g>
+</svg>
