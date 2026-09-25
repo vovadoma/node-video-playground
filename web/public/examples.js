@@ -151,6 +151,12 @@ function renderExamplePage(content, id) {
   runBtn.title = noTools ? `ffmpeg / ffprobe not found — install it first: ${state.tools.hint}`
     : ex.running && !isRunning ? `${ex.running} is running — one example at a time` : '';
   stopBtn.hidden = !isRunning;
+  // long-running examples that start their own server print a URL — offer it as a button
+  ex.liveUrl = isRunning ? liveUrlOf(ex.term) : null;
+  if (ex.liveUrl) {
+    const open = Object.assign(document.createElement('a'), { className: 'btn btn-primary', href: ex.liveUrl, target: '_blank', rel: 'noopener', textContent: 'Open live page ↗' });
+    q('stop').before(open);
+  }
   runBtn.addEventListener('click', () => startRun(id, e.input ? select.value : ''));
   stopBtn.addEventListener('click', () => api(`/api/examples/${encodeURIComponent(id)}/stop`, {}).catch((err) => alertNote(err.message)));
 
@@ -242,10 +248,12 @@ function connect(id) {
     ex.term = termFrom(run?.log ?? '');
     ex.termId = id;
     if (run?.status === 'running') ex.running = id;
+    if (ex.running === id && !ex.liveUrl && liveUrlOf(ex.term)) return render();
     if (ex.consoleEl?.isConnected) ex.consoleEl.textContent = termText(ex.term);
   });
   es.addEventListener('log', (m) => {
     termWrite(ex.term, JSON.parse(m.data));
+    if (!ex.liveUrl && liveUrlOf(ex.term)) return render();   // a server just came up — show its link
     const c = ex.consoleEl;
     if (!c?.isConnected) return;
     const atBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
@@ -283,6 +291,10 @@ function termWrite(t, chunk) {
     }
   }
   if (t.lines.length > 5000) t.lines.splice(0, t.lines.length - 5000);
+}
+/** First local http(s) URL printed by the example, e.g. "Live page: http://127.0.0.1:3009". */
+function liveUrlOf(t) {
+  return termText(t).match(/https?:\/\/(?:127\.0\.0\.1|localhost):\d+[^\s'"]*/)?.[0] ?? null;
 }
 function termText(t) {
   return t.lines.join('\n').replace(/\n$/, '');

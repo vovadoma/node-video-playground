@@ -17,6 +17,7 @@
     "batch": "tsx examples/06-batch-probe.ts",
     "audio": "tsx examples/07-audio.ts",
     "frames": "tsx examples/08-frames.ts",
+    "live": "tsx examples/09-live-transform.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"

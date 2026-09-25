@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-8-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-9-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -63,6 +63,7 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 06 | `npm run batch -- [dir]` | Walk a folder, probe every media file in parallel, print a table |
 | 07 | `npm run audio -- [file]` | Extract the audio track without re-encoding, convert to Opus / MP3 / AC-3 / WAV, measure EBU R128 loudness (`ebur128`), normalise to −16 LUFS with `loudnorm` — on a real voice recording by default |
 | 08 | `npm run frames -- [file]` | Split video into one JPEG per frame. Motion JPEG (all I-frames) is cut with `-c:v copy` — byte-identical to the packets, no decoding; any other codec shows its I/P/B mix and is decoded + re-encoded |
+| 09 | `npm run live` → <http://127.0.0.1:3009> | Process video **on the fly**: file stream → ffmpeg stdin → filter (grayscale, negative, edges, mirror, blur, before/after split) → ffmpeg stdout → HTTP response. Delivered as fragmented MP4 to `<video>` or as MJPEG (`multipart/x-mixed-replace`) to `<img>`; nothing touches the disk, backpressure is end to end. Shows which files can't be streamed (MP4 with `moov` at the end → needs `+faststart`) |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -153,9 +154,11 @@ Normalised to -16 LUFS → measured -16.5 LUFS
 src/lib/
   config.ts    SAMPLES_DIR / OUTPUT_DIR / binary paths · sample() & out() helpers · tiny .env loader
   ffprobe.ts   probe() → typed ProbeResult · probeSummary() for the common fields
-  ffmpeg.ts    runFfmpeg() with -progress parsing & callbacks · runFfmpegCapture() for filter stats
+  ffmpeg.ts    runFfmpeg() with -progress parsing & callbacks · runFfmpegCapture() for filter stats · ffmpegStream() stream → ffmpeg → stream
   format.ts    humanBytes / humanDuration / kbps
-examples/      01…08, one topic per file, numbered in learning order
+  live.ts      live server for 09: streamability check (moov first?), fMP4 / MJPEG delivery, backpressure stats, page
+  effects.ts   picture effects as ffmpeg filters + the before/after split graph
+examples/      01…09, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
 web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
