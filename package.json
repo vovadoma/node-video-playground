@@ -17,6 +17,7 @@
     "batch": "tsx examples/06-batch-probe.ts",
     "audio": "tsx examples/07-audio.ts",
     "samples": "tsx scripts/make-samples.ts",
+    "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -33,6 +33,7 @@ npm install                      # execa + tsx + typescript, that's it
 npm run probe                    # ffprobe → typed JSON
 npm run hls                      # ABR ladder → HLS/CMAF in one pass
 npm run audio                    # EBU R128 loudness + loudnorm on a real voice recording
+npm run web                      # browse & play every sample at http://127.0.0.1:3000
 ```
 
 **Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional.
@@ -131,6 +132,15 @@ Loudness (EBU R128): integrated -27.9 LUFS, range 3.1 LU, true peak -7.4 dBTP
 Normalised to -16 LUFS → measured -16.5 LUFS
 ```
 
+## Web player
+
+`npm run web` starts a zero-dependency server (`node:http`, no build step) at <http://127.0.0.1:3000> (`PORT` to change) that lists everything under `SAMPLES_DIR` and plays what the browser can:
+
+- **Catalog** — every file is probed once at startup; the sidebar groups them by folder with codec / resolution / duration / size, a text filter and an *only playable* toggle. `rescan` re-probes.
+- **Playability** is decided from the real codecs, not the extension: **yes** (H.264 / VP8 / VP9 / AV1-in-WebM, AAC / MP3 / Opus / Vorbis / FLAC / PCM), **maybe** (H.265, ALAC, AC-3/E-AC-3, Matroska, AV1-in-MP4 — refined with `canPlayType()` in your browser), **no** (AVI, FLV, WMV, MXF, MPEG-PS/TS, ProRes, DNxHR, DTS, WMA, G.72x, AMR…). For the last group the page shows the metadata and an ffmpeg command for a browser-friendly copy.
+- **Streaming** — HLS playlists play via [hls.js](https://github.com/video-dev/hls.js) (natively in Safari), DASH via [dash.js](https://github.com/Dash-Industry-Forum/dash.js), both from the jsDelivr CDN; segments are hidden from the list.
+- **Seeking** works because `/media/*` honours HTTP `Range` (206 / 416). The server binds to `127.0.0.1` and refuses paths outside `SAMPLES_DIR`.
+
 ## How it's put together
 
 ```
@@ -141,6 +151,7 @@ src/lib/
   format.ts    humanBytes / humanDuration / kbps
 examples/      01…07, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
+web/           server.ts (catalog API + Range file server) · public/ (index.html + app.js, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
 docs/          images for this README
 ```
