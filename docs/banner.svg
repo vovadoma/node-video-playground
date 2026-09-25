@@ -42,11 +42,11 @@
   </g>
   <g transform="translate(450,182)">
     <rect width="112" height="28" rx="4" fill="#f3f4f6" stroke="#e5e7eb"/>
-    <text class="tag" x="56" y="18" text-anchor="middle">HLS · DASH</text>
+    <text class="tag" x="56" y="18" text-anchor="middle">HLS · CMAF</text>
   </g>
   <g transform="translate(572,182)">
     <rect width="168" height="28" rx="4" fill="#f3f4f6" stroke="#e5e7eb"/>
-    <text class="tag" x="84" y="18" text-anchor="middle">H.264 · H.265 · AV1</text>
+    <text class="tag" x="84" y="18" text-anchor="middle">H.264 · H.265 · VP9</text>
   </g>
 
   <!-- footer line -->

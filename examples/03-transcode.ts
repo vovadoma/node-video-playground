@@ -1,5 +1,5 @@
 /**
- * 03 — Transcode with progress: H.264 -> H.265, plus a 480p H.264 "web" rendition.
+ * 03 — Transcode with progress: H.264 -> H.265, a 480p H.264 "web" rendition and VP9 WebM.
  *
  *   npm run transcode
  *   npm run transcode -- input.mov
