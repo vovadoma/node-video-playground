@@ -6,7 +6,7 @@
   <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-7-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
-  <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-6.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
+  <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-6b7280?style=flat-square"></a>
 </p>
 
@@ -64,6 +64,8 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 07 | `npm run audio -- [file]` | Extract the audio track without re-encoding, convert to Opus / MP3 / AC-3 / WAV, measure EBU R128 loudness (`ebur128`), normalise to −16 LUFS with `loudnorm` — on a real voice recording by default |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
+
+**Adding an example.** Drop `examples/08-something.ts` in — the web UI picks it up without a restart. It reads the header comment: first line `NN — Title: what it shows.`, then usage lines (`npm run …`). If the script reads `process.argv[2] ?? sample('…')` the UI offers a file picker; `process.argv[2] ?? SAMPLES_DIR` gives a folder picker. Write results with `out('…')` so they land in `output/` and show up under *Results*. Add an npm script to `package.json` if you want a short command.
 
 ### What it looks like
 
@@ -140,7 +142,9 @@ Normalised to -16 LUFS → measured -16.5 LUFS
 - **Playability** is decided from the real codecs, not the extension: **yes** (H.264 / VP8 / VP9 / AV1-in-WebM, AAC / MP3 / Opus / Vorbis / FLAC / PCM), **maybe** (H.265, ALAC, AC-3/E-AC-3, Matroska, AV1-in-MP4 — refined with `canPlayType()` in your browser), **no** (AVI, FLV, WMV, MXF, MPEG-PS/TS, ProRes, DNxHR, DTS, WMA, G.72x, AMR…). The last group is hidden; *maybe* cards carry a *Limited* badge.
 - **Streaming** — HLS playlists play via [hls.js](https://github.com/video-dev/hls.js) (natively in Safari), DASH via [dash.js](https://github.com/Dash-Industry-Forum/dash.js), both from the jsDelivr CDN; segments are hidden from the list.
 - **Seeking** works because `/media/*` honours HTTP `Range` (206 / 416). The server binds to `127.0.0.1` and refuses paths outside `SAMPLES_DIR`.
-- **Extending** — cards are an HTML `<template>` filled from a plain model object: a new tab is one entry in `TABS`, a new kind of card is one function in `CARD_MODELS` (`web/public/app.js`); styles live in `web/public/styles.css`.
+- **Examples tab** — every `examples/NN-name.ts` shows up as a card; open one to pick an input from `samples/`, press **Run** and watch the console live (progress bars included). When it finishes, the files it wrote to `output/` appear as playable cards. One run at a time; *Stop* kills the whole process group (ffmpeg included). The last run of each example is kept in `output/.runs/`.
+- **ffmpeg check** — on start (and on *Rescan*) the server checks that `ffmpeg` / `ffprobe` can run (`/api/health`). If not, a banner shows the install command and *Run* is disabled; install it and press *Check again* — no restart needed.
+- **Extending** — cards are an HTML `<template>` filled from a plain model object: a new file tab is one entry in `TABS`, a new kind of card is one function in `CARD_MODELS` (`web/public/app.js`), a tab with its own UI is `registerTab({…})` (see `web/public/examples.js`); styles live in `web/public/styles.css`.
 
 ## How it's put together
 
@@ -152,7 +156,7 @@ src/lib/
   format.ts    humanBytes / humanDuration / kbps
 examples/      01…07, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
-web/           server.ts entry · engine/ (router, Range file server) · catalog/ (ffprobe scan, playability rules) · routes.ts · public/ (UI, no build)
+web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
 docs/          images for this README
 ```

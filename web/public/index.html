@@ -31,6 +31,7 @@
       </button>
     </div>
     <nav class="tabs" role="tablist" id="tabs"></nav>
+    <div id="envBanner" class="env-banner" role="status" hidden></div>
   </header>
 
   <main class="page">
@@ -91,6 +92,76 @@
     </article>
   </template>
 
+  <!-- Example card: same filling rules as tpl-card (see renderExampleCard in app.js). -->
+  <template id="tpl-example-card">
+    <article class="card ex-card" tabindex="0">
+      <div class="ex-card-head">
+        <span class="ex-num" data-field="num"></span>
+        <span class="badges" data-field="badges"></span>
+      </div>
+      <div class="card-body">
+        <h3 class="card-title" data-field="title"></h3>
+        <p class="ex-summary" data-field="summary"></p>
+      </div>
+      <footer class="card-foot">
+        <code class="ex-cmd" data-field="command"></code>
+        <span class="ex-open">Open →</span>
+      </footer>
+    </article>
+  </template>
+
+  <!-- Example page: description, run controls, live console, results, source. -->
+  <template id="tpl-example-page">
+    <section class="ex-page">
+      <a class="back" href="#tab=examples">← All examples</a>
+      <div class="ex-hero">
+        <div class="ex-hero-text">
+          <span class="ex-num" data-field="num"></span>
+          <h2 data-field="title"></h2>
+          <p data-field="summary"></p>
+          <code class="ex-cmd" data-field="command"></code>
+        </div>
+        <div class="ex-controls">
+          <label class="field" data-role="input-field">
+            <span data-field="inputLabel"></span>
+            <select data-role="input"></select>
+          </label>
+          <div class="ex-buttons">
+            <button class="btn btn-primary" data-role="run">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 4.3v11.4a.5.5 0 0 0 .77.42l8.7-5.7a.5.5 0 0 0 0-.84l-8.7-5.7a.5.5 0 0 0-.77.42Z"/></svg>
+              Run
+            </button>
+            <button class="btn" data-role="stop" hidden>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="1.5"/></svg>
+              Stop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Console</h3>
+          <span class="run-status" data-role="status"></span>
+        </div>
+        <pre class="console" data-role="console"></pre>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Results</h3>
+          <span class="muted" data-role="results-meta"></span>
+        </div>
+        <div class="panel-body" data-role="results"></div>
+      </div>
+
+      <details class="panel">
+        <summary class="panel-head"><h3>Source</h3><span class="muted mono" data-field="fileName"></span></summary>
+        <pre class="code" data-role="source"></pre>
+      </details>
+    </section>
+  </template>
+
   <template id="tpl-section">
     <section class="section">
       <h2 class="section-title"><span data-field="title"></span><span class="count" data-field="count"></span></h2>
@@ -101,5 +172,6 @@
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js"></script>
   <script src="app.js"></script>
+  <script src="examples.js"></script>
 </body>
 </html>

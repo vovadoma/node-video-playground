@@ -35,6 +35,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); }
 svg { fill: currentColor; }
@@ -191,3 +192,90 @@ svg { fill: currentColor; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .card-play { opacity: 1; transform: scale(.85); }
 }
+
+/* ---------------------------------------------------------------- buttons (primary) */
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.badge-error { background: var(--danger-soft); color: var(--danger); }
+.card-media > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.player-stage.image { background: var(--surface-2); text-align: center; }
+.player-stage img { display: block; max-width: 100%; max-height: 70vh; margin: 0 auto; }
+
+/* ---------------------------------------------------------------- examples: list */
+
+.ex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.ex-card-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 14px 0; }
+.ex-num {
+  display: inline-grid; place-items: center; min-width: 36px; height: 28px; padding: 0 8px; border-radius: 7px;
+  font: 700 13px var(--mono); color: var(--accent); background: var(--accent-soft);
+}
+.ex-summary { margin: 6px 0 0; color: var(--text-2); font-size: 13px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.ex-card .card-title { white-space: normal; }
+.ex-cmd { font: 12px var(--mono); color: var(--text-2); background: var(--surface-2); padding: 2px 8px; border-radius: 5px; }
+.ex-open { color: var(--accent); font-weight: 600; font-size: 12.5px; }
+
+/* ---------------------------------------------------------------- examples: page */
+
+.back { display: inline-block; margin-bottom: 16px; color: var(--accent); text-decoration: none; font-weight: 500; }
+.back:hover { text-decoration: underline; }
+.ex-hero {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap;
+  padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.ex-hero-text { flex: 1 1 420px; min-width: 0; }
+.ex-hero h2 { margin: 10px 0 4px; font-size: 20px; letter-spacing: -.01em; }
+.ex-hero p { margin: 0 0 12px; color: var(--text-2); max-width: 72ch; }
+.ex-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.ex-buttons { display: flex; gap: 8px; }
+.field { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.field select {
+  height: 36px; min-width: 260px; max-width: 100%; padding: 0 10px; font: 400 13px var(--font); text-transform: none; letter-spacing: 0;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px;
+}
+
+.panel { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); overflow: hidden; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+details.panel:not([open]) > .panel-head { border-bottom: 0; }
+summary.panel-head { cursor: pointer; list-style: none; }
+summary.panel-head::-webkit-details-marker { display: none; }
+summary.panel-head h3::before { content: "▸ "; color: var(--muted); }
+details[open] > summary.panel-head h3::before { content: "▾ "; }
+.panel-head h3 { margin: 0; font-size: 14px; }
+.panel-body { padding: 16px; }
+.panel-body .empty { padding: 24px 0; }
+
+.run-status { font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.run-status.running { color: var(--accent); }
+.run-status.ok { color: var(--ok); }
+.run-status.failed, .run-status.stopped { color: var(--danger); }
+.run-status.running::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1s infinite ease-in-out; }
+@keyframes pulse { 50% { opacity: .25; } }
+
+.console {
+  margin: 0; min-height: 120px; max-height: 420px; overflow: auto; padding: 14px 16px;
+  font: 12.5px/1.55 var(--mono); color: #e5e7eb; background: #0b1220; white-space: pre-wrap; word-break: break-word;
+}
+.console:empty::before { content: "Press Run to start the example."; color: #6b7280; }
+.code {
+  margin: 0; max-height: 560px; overflow: auto; padding: 14px 16px; counter-reset: line;
+  font: 12.5px/1.6 var(--mono); background: var(--surface-2); color: var(--text); tab-size: 2;
+}
+.code span { display: block; }
+.code span::before { counter-increment: line; content: counter(line); display: inline-block; width: 3ch; margin-right: 16px; text-align: right; color: var(--muted); opacity: .6; }
+
+@media (max-width: 720px) {
+  .field select { min-width: 0; width: 100%; }
+  .ex-controls, .field { width: 100%; }
+}
+.ex-card .card-foot .ex-cmd { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ex-open { white-space: nowrap; }
+
+/* ---------------------------------------------------------------- environment banner (ffmpeg missing) */
+
+.env-banner { border-top: 1px solid var(--border); background: var(--warn-soft); color: var(--warn); }
+.env-banner-inner { max-width: 1320px; margin: 0 auto; padding: 10px 24px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.env-banner code { font: 600 12.5px var(--mono); padding: 2px 8px; border-radius: 5px; background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.env-banner .btn { height: 28px; font-size: 12px; margin-left: auto; }
+@media (max-width: 720px) { .env-banner-inner { padding: 10px 16px; } }

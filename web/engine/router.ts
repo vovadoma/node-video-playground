@@ -3,7 +3,7 @@
  * Knows nothing about media: handlers get a context and write the response themselves.
  */
 import type { IncomingMessage, RequestListener, ServerResponse } from 'node:http';
-import { sendJson } from './respond.js';
+import { HttpError, sendJson } from './respond.js';
 
 export interface Context {
   req: IncomingMessage;
@@ -34,6 +34,10 @@ export function createRouter(routes: Route[]): RequestListener {
       if (!route) return sendJson(res, 404, { error: 'not found' });
       await route.handler({ req, res, url, rest: route.prefix ? url.pathname.slice(route.prefix.length) : '' });
     } catch (e) {
+      if (e instanceof HttpError) {
+        if (!res.headersSent) return sendJson(res, e.status, { error: e.message });
+        return res.destroy();
+      }
       console.error(e);
       if (!res.headersSent) sendJson(res, 500, { error: (e as Error).message });
       else res.destroy();

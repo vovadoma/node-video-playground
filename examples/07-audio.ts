@@ -40,7 +40,9 @@ console.log(`\nLoudness (EBU R128): integrated ${m.integrated} LUFS, range ${m.r
 
 // 4. Normalise to a streaming target (-16 LUFS; broadcast EBU R128 would be -23) with loudnorm
 const normalized = out('audio/normalized_-16lufs.m4a');
-await runFfmpeg(['-i', input, '-vn', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-c:a', 'aac', '-b:a', '128k', normalized]);
+// loudnorm works at 192 kHz internally and outputs that rate — set it back explicitly
+const rate = String(src.audio?.sampleRate || 48000);
+await runFfmpeg(['-i', input, '-vn', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', rate, '-c:a', 'aac', '-b:a', '128k', normalized]);
 const after = await measureLoudness(normalized);
 console.log(`Normalised to -16 LUFS → measured ${after.integrated} LUFS  (${normalized})`);
 

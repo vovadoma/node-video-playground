@@ -21,7 +21,7 @@ export interface Entry {
   error?: string;
 }
 
-const MEDIA = /\.(mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|ts|m2ts|mxf|3gp|ogv|mp3|m4a|aac|ac3|eac3|dts|flac|wav|aiff?|au|ogg|opus|wma|wv|mka|amr|ra|voc|mp2|g722|m3u8|mpd)$/i;
+const MEDIA = /\.(mp4|m4v|mov|mkv|webm|avi|flv|wmv|mpg|mpeg|ts|m2ts|mxf|3gp|ogv|mp3|m4a|aac|ac3|eac3|dts|flac|wav|aiff?|au|ogg|opus|wma|wv|mka|amr|ra|voc|mp2|g722|m3u8|mpd|jpe?g|png|webp|gif)$/i;
 const CONCURRENCY = 8;
 
 export class Catalog {
@@ -42,45 +42,53 @@ export class Catalog {
 
   private async scan(): Promise<Entry[]> {
     const t0 = Date.now();
-    const files = walk(this.root).sort();
-    const all = new Set(files);
-    const manifestDirs = new Set(files.filter((f) => /\.(m3u8|mpd)$/i.test(f)).map((f) => path.dirname(f)));
-    const list = files.filter((f) => !isStreamingPart(f, all, manifestDirs));
-
-    const out: Entry[] = [];
-    for (let i = 0; i < list.length; i += CONCURRENCY) {
-      out.push(...await Promise.all(list.slice(i, i + CONCURRENCY).map((f) => this.buildEntry(f))));
-    }
-
+    const out = await buildEntries(this.root, walk(this.root));
     console.log(`Catalog: ${out.length} entries from ${this.root} in ${Date.now() - t0} ms`);
     const failed = out.filter((e) => e.error);
     if (failed.length) console.warn(`  ffprobe failed for ${failed.length} file(s) — playability guessed from extension. First error: ${failed[0].error}`);
     return out;
   }
+}
 
-  private async buildEntry(file: string): Promise<Entry> {
-    const rel = path.relative(this.root, file).split(path.sep).join('/');
-    const parts = rel.split('/');
-    const entry: Entry = {
-      path: rel,
-      group: parts.length > 1 ? parts.slice(0, Math.min(parts.length - 1, 2)).join('/') : '.',
-      kind: kindOf(rel),
-      size: statSync(file).size,
-      playable: 'no',
-      mime: mimeOf(file),
-    };
-    if (entry.kind !== 'hls' && entry.kind !== 'dash') {
-      try {
-        const { raw, ...summary } = await probeSummary(file);
-        entry.summary = summary;
-        entry.raw = raw;
-        entry.kind = kindOf(rel, summary);
-      } catch (e) {
-        entry.error = String((e as Error).message).split('\n')[0];
-      }
-    }
-    return Object.assign(entry, classify(rel, entry.summary));
+/**
+ * Describe a set of files under `root` (probe + classify). HLS/DASH segments are folded into
+ * their manifest. Used for the samples catalog and for the outputs of an example run.
+ */
+export async function buildEntries(root: string, files: string[]): Promise<Entry[]> {
+  const sorted = files.filter((f) => MEDIA.test(f)).sort();
+  const all = new Set(sorted);
+  const manifestDirs = new Set(sorted.filter((f) => /\.(m3u8|mpd)$/i.test(f)).map((f) => path.dirname(f)));
+  const list = sorted.filter((f) => !isStreamingPart(f, all, manifestDirs));
+
+  const out: Entry[] = [];
+  for (let i = 0; i < list.length; i += CONCURRENCY) {
+    out.push(...await Promise.all(list.slice(i, i + CONCURRENCY).map((f) => buildEntry(root, f))));
   }
+  return out;
+}
+
+async function buildEntry(root: string, file: string): Promise<Entry> {
+  const rel = path.relative(root, file).split(path.sep).join('/');
+  const parts = rel.split('/');
+  const entry: Entry = {
+    path: rel,
+    group: parts.length > 1 ? parts.slice(0, Math.min(parts.length - 1, 2)).join('/') : '.',
+    kind: kindOf(rel),
+    size: statSync(file).size,
+    playable: 'no',
+    mime: mimeOf(file),
+  };
+  if (entry.kind !== 'hls' && entry.kind !== 'dash' && entry.kind !== 'image') {
+    try {
+      const { raw, ...summary } = await probeSummary(file);
+      entry.summary = summary;
+      entry.raw = raw;
+      entry.kind = kindOf(rel, summary);
+    } catch (e) {
+      entry.error = String((e as Error).message).split('\n')[0];
+    }
+  }
+  return Object.assign(entry, classify(rel, entry.summary));
 }
 
 function walk(dir: string): string[] {

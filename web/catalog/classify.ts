@@ -3,10 +3,11 @@
  */
 import type { probeSummary } from '../../src/lib/ffprobe.js';
 
-export type Kind = 'video' | 'audio' | 'hls' | 'dash';
+export type Kind = 'video' | 'audio' | 'hls' | 'dash' | 'image';
 export type Playable = 'yes' | 'maybe' | 'no';
 export type Summary = Omit<Awaited<ReturnType<typeof probeSummary>>, 'raw'>;
 
+const IMAGE_EXT = /\.(jpe?g|png|webp|gif)$/;
 const AUDIO_EXT = /\.(mp3|m4a|aac|ac3|eac3|dts|flac|wav|aiff?|au|ogg|opus|wma|wv|mka|amr|ra|voc|mp2|g722)$/;
 
 /**
@@ -17,6 +18,7 @@ export function kindOf(relPath: string, summary?: Summary): Kind {
   const ext = extOf(relPath);
   if (ext === '.m3u8') return 'hls';
   if (ext === '.mpd') return 'dash';
+  if (IMAGE_EXT.test(ext)) return 'image';
   // audio extensions stay audio even if ffprobe reports a "video" stream (embedded cover art)
   if (AUDIO_EXT.test(ext)) return 'audio';
   if (summary) return !summary.video && summary.audio ? 'audio' : 'video';
@@ -28,7 +30,7 @@ export function kindOf(relPath: string, summary?: Summary): Kind {
 /** Decide from the real codecs (not the extension) whether a <video>/<audio> can take it. */
 export function classify(relPath: string, s?: Summary): { playable: Playable; reason?: string } {
   const ext = extOf(relPath);
-  if (ext === '.m3u8' || ext === '.mpd') return { playable: 'yes' };
+  if (ext === '.m3u8' || ext === '.mpd' || IMAGE_EXT.test(ext)) return { playable: 'yes' };
   const byExt: Record<string, Playable> = {
     '.mp4': 'yes', '.m4v': 'yes', '.webm': 'yes', '.mp3': 'yes', '.m4a': 'yes', '.aac': 'yes',
     '.flac': 'yes', '.wav': 'yes', '.ogg': 'yes', '.opus': 'yes', '.mov': 'maybe', '.mkv': 'maybe', '.mka': 'maybe',
