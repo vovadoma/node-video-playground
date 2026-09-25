@@ -136,10 +136,11 @@ Normalised to -16 LUFS → measured -16.5 LUFS
 
 `npm run web` starts a zero-dependency server (`node:http`, no build step) at <http://127.0.0.1:3000> (`PORT` to change) that lists everything under `SAMPLES_DIR` and plays what the browser can:
 
-- **Catalog** — every file is probed once at startup; the sidebar groups them by folder with codec / resolution / duration / size, a text filter and an *only playable* toggle. `rescan` re-probes.
-- **Playability** is decided from the real codecs, not the extension: **yes** (H.264 / VP8 / VP9 / AV1-in-WebM, AAC / MP3 / Opus / Vorbis / FLAC / PCM), **maybe** (H.265, ALAC, AC-3/E-AC-3, Matroska, AV1-in-MP4 — refined with `canPlayType()` in your browser), **no** (AVI, FLV, WMV, MXF, MPEG-PS/TS, ProRes, DNxHR, DTS, WMA, G.72x, AMR…). For the last group the page shows the metadata and an ffmpeg command for a browser-friendly copy.
+- **Library** — every file is probed once at startup and shown as a card (preview, codecs, resolution, duration, size) under three tabs: **Video**, **Audio**, **Streaming**, grouped by folder, with search. Only browser-playable files are listed; `Rescan` re-probes. Clicking a card opens the player with the ffprobe details.
+- **Playability** is decided from the real codecs, not the extension: **yes** (H.264 / VP8 / VP9 / AV1-in-WebM, AAC / MP3 / Opus / Vorbis / FLAC / PCM), **maybe** (H.265, ALAC, AC-3/E-AC-3, Matroska, AV1-in-MP4 — refined with `canPlayType()` in your browser), **no** (AVI, FLV, WMV, MXF, MPEG-PS/TS, ProRes, DNxHR, DTS, WMA, G.72x, AMR…). The last group is hidden; *maybe* cards carry a *Limited* badge.
 - **Streaming** — HLS playlists play via [hls.js](https://github.com/video-dev/hls.js) (natively in Safari), DASH via [dash.js](https://github.com/Dash-Industry-Forum/dash.js), both from the jsDelivr CDN; segments are hidden from the list.
 - **Seeking** works because `/media/*` honours HTTP `Range` (206 / 416). The server binds to `127.0.0.1` and refuses paths outside `SAMPLES_DIR`.
+- **Extending** — cards are an HTML `<template>` filled from a plain model object: a new tab is one entry in `TABS`, a new kind of card is one function in `CARD_MODELS` (`web/public/app.js`); styles live in `web/public/styles.css`.
 
 ## How it's put together
 
@@ -151,7 +152,7 @@ src/lib/
   format.ts    humanBytes / humanDuration / kbps
 examples/      01…07, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
-web/           server.ts (catalog API + Range file server) · public/ (index.html + app.js, no build)
+web/           server.ts (catalog API + Range file server) · public/ (index.html + app.js + styles.css, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
 docs/          images for this README
 ```

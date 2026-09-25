@@ -131,6 +131,8 @@ async function buildEntry(file: string): Promise<Entry> {
       if (!summary.video && summary.audio) entry.kind = 'audio';
     } catch (e) {
       entry.error = String((e as Error).message).split('\n')[0];
+      // no ffprobe: .webm / .mka under an audio/ folder are audio-only in practice
+      if (parts.includes('audio') && /\.(webm|mka|mp4)$/.test(ext)) entry.kind = 'audio';
     }
   }
   Object.assign(entry, classify(ext, entry.summary));
