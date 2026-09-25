@@ -7,7 +7,7 @@
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-6.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
-  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-6b7280?style=flat-square"></a>
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-6b7280?style=flat-square">
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ## Why
 
-Video tooling tends to come as either a giant SDK or a wall of ffmpeg flags copied from Stack Overflow. This repo sits in between: a ~230-line typed wrapper around `ffmpeg` / `ffprobe` (`src/lib/`) and one self-contained, commented example per topic. No build step, no framework, nothing to configure — `npm install` and run.
+Video tooling tends to come as either a giant SDK or a wall of ffmpeg flags copied from Stack Overflow. This repo sits in between: a ~150-line typed wrapper around `ffmpeg` / `ffprobe` (`src/lib/`) and one self-contained, commented example per topic. No build step, no framework, nothing to configure — `npm install` and run.
 
 <p align="center">
   <img src="docs/pipeline.svg" alt="source → probe → transcode → package → measure" width="90%">
@@ -34,19 +34,30 @@ npm run probe                    # ffprobe → typed JSON
 npm run hls                      # ABR ladder → HLS/CMAF in one pass
 ```
 
-**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx. `libvmaf` is optional.
-Test media lives in `~/Movies/video-samples` by default — a 68-file catalog of containers × codecs (see its `README.md`) — or point `SAMPLES_DIR` anywhere.
+**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional.
+
+## Test media
+
+The repo ships its own test set in [`samples/`](samples/README.md) — 66 files, ~135 MB, every common container × codec combination plus HLS/DASH packages:
+
+| Folder | What | Files |
+|---|---|---|
+| `samples/real-world/` | Real files from [projectivetech/media-samples](https://github.com/projectivetech/media-samples): MP4, MOV, MKV, WebM, AVI, FLV, WMV, MPG, MXF (incl. Avid OP-Atom DNxHD) | 11 |
+| `samples/generated/` | One 10 s 720p test pattern encoded as H.264 / H.265 / AV1 / VP8 / VP9 / MPEG-2 / MJPEG / Xvid / Sorenson / WMV2 into MP4, fMP4, MOV, MKV, WebM, TS, PS, MXF, AVI, FLV, ASF — with AAC, Opus, Vorbis, MP2, MP3, AC-3, E-AC-3, PCM audio | 24 |
+| `samples/streaming/` | HLS with TS segments + 3-rendition ABR ladder, HLS fMP4/CMAF, MPEG-DASH | 31 |
+
+Two outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mov` ~64 MB, DNxHR HQ `.mxf` ~123 MB). `npm run samples` regenerates the whole `generated/` + `streaming/` set, including those two, from the same ffmpeg recipes — so the matrix is reproducible, not just checked in. Point `SAMPLES_DIR` elsewhere to use your own media.
 
 ## Examples
 
 | # | Run | What it shows |
 |:-:|---|---|
-| 01 | `npm run probe -- [file]` | `ffprobe` → typed `ProbeResult`: container, codecs, resolution, fps, bitrate |
-| 02 | `npm run thumb -- [file]` | Poster frame, 4×3 contact sheet, sprite strip for scrub-bar previews |
-| 03 | `npm run transcode -- [file]` | H.264 → H.265 / 480p H.264 / VP9 with a live progress bar and size deltas |
-| 04 | `npm run hls -- [file]` | One-pass 720/480/360p ABR ladder into HLS with fMP4 (CMAF) segments + master playlist |
-| 05 | `npm run quality` | PSNR / SSIM of the `generated/` sample encodes (MP4 · MKV · WebM) against `master_h264_720p.mp4`, as a table |
-| 06 | `npm run batch -- [dir]` | Walk a folder, probe every media file in parallel, print a table |
+| 01 | `npm run probe [file]` | `ffprobe` → typed `ProbeResult`: container, codecs, resolution, fps, bitrate |
+| 02 | `npm run thumb [file]` | Poster frame, 4×3 contact sheet, sprite strip for scrub-bar previews |
+| 03 | `npm run transcode [file]` | H.264 → H.265 / 480p H.264 / VP9 with a live progress bar and size deltas |
+| 04 | `npm run hls [file]` | One-pass 720/480/360p ABR ladder into HLS with fMP4 (CMAF) segments + master playlist |
+| 05 | `npm run quality` | PSNR / SSIM of every encode against the master, as a table |
+| 06 | `npm run batch [dir]` | Walk a folder, probe every media file in parallel, print a table |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -111,6 +122,8 @@ src/lib/
   ffmpeg.ts    runFfmpeg() with -progress parsing & callbacks · runFfmpegCapture() for filter stats
   format.ts    humanBytes / humanDuration / kbps
 examples/      01…06, one topic per file, numbered in learning order
+scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
+samples/       test media (see samples/README.md for the full catalog)
 docs/          images for this README
 ```
 
@@ -122,7 +135,7 @@ Copy `.env.example` to `.env` or export variables; shell always wins.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SAMPLES_DIR` | `~/Movies/video-samples` | where `sample('…')` looks for inputs |
+| `SAMPLES_DIR` | `./samples` | where `sample('…')` looks for inputs |
 | `OUTPUT_DIR` | `./output` | where `out('…')` writes results |
 | `FFMPEG_BIN` / `FFPROBE_BIN` | `ffmpeg` / `ffprobe` | override binaries |
 
@@ -138,4 +151,4 @@ Copy `.env.example` to `.env` or export variables; shell always wins.
 
 ## License
 
-[MIT](LICENSE). Generated test patterns come from ffmpeg's `testsrc2`; real-world samples from [projectivetech/media-samples](https://github.com/projectivetech/media-samples).
+MIT. Generated test patterns come from ffmpeg's `testsrc2`; real-world samples from [projectivetech/media-samples](https://github.com/projectivetech/media-samples).

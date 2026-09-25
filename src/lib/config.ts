@@ -12,9 +12,15 @@ if (existsSync('.env')) {
   }
 }
 
-/** Folder with test media (see ~/Movies/video-samples/README.md). */
+/**
+ * Folder with test media. Resolution order:
+ *   1. SAMPLES_DIR env var
+ *   2. ./samples (shipped with the repo)
+ *   3. ~/Movies/video-samples (legacy location)
+ */
 export const SAMPLES_DIR =
-  process.env.SAMPLES_DIR ?? path.join(homedir(), 'Movies', 'video-samples');
+  process.env.SAMPLES_DIR ??
+  (existsSync(path.resolve('samples')) ? path.resolve('samples') : path.join(homedir(), 'Movies', 'video-samples'));
 
 /** Where examples write their results. */
 export const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR ?? 'output');
