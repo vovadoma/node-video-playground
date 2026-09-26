@@ -7,3 +7,4 @@ output/
 # too large for GitHub (>50 MB); regenerate with `npm run samples`
 samples/generated/mxf_dnxhr_hq_pcm.mxf
 samples/generated/mov_prores_hq_pcm.mov
+site/

@@ -29,6 +29,8 @@
     "screen": "tsx examples/18-screen-capture.ts",
     "screen-camera": "tsx examples/19-screen-and-camera.ts",
     "samples": "tsx scripts/make-samples.ts",
+    "capture": "NODE_OPTIONS=--experimental-websocket tsx scripts/capture.ts",
+    "site": "tsx scripts/build-site.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"
   },
