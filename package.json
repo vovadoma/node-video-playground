@@ -24,6 +24,7 @@
     "track-live": "tsx examples/13-track-live.ts",
     "intercept": "tsx examples/14-intercept.ts",
     "webrtc": "tsx examples/15-webrtc-wrtc.ts",
+    "webrtc-werift": "tsx examples/16-webrtc-werift.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-15-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-16-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -70,6 +70,7 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 13 | `npm run track-live` → <http://127.0.0.1:3013> | **Follow it live with a crosshair**: file stream → ffmpeg decodes to raw yuv420p → Node detects, tracks and matches the profile from 12 (SEARCH → LOCK → LOST/predict) and draws the crosshair into the pixels → second ffmpeg encodes → browser. ~4 ms per 720p frame; pick another candidate or show every detection |
 | 14 | `npm run intercept` → <http://127.0.0.1:3014> | **Two independent processes, one video**: process A (`examples/processes/target-injector.ts`, a child process) paints a ball that starts at a random point in a random direction and bounces off the edges; process B (`src/lib/intercept.ts`) sees only the resulting pixels — spots a small moving blob in the centre square, captures it and keeps it in the square, and steers a sight at `ratio` × the ball's measured speed to an intercept point on the predicted (bouncing) path. A's true positions (stderr) are used only to score B |
 | 15 | `npm run webrtc` → <http://127.0.0.1:3015> | **WebRTC echo on Node with `@roamhq/wrtc`** (libwebrtc as an addon): the browser sends its camera or a sample video, Node returns it — `forward` (the received track sent straight back), `frames` (through Node untouched), `effects`, `watermark` or `tracker` (the seeker from 14), switched live over a DataChannel. `RTCVideoSink`/`RTCVideoSource` give raw I420 frames, so all the drawing code works as is. The page stamps a timestamp into each frame and reads it back → real round-trip latency per mode |
+| 16 | `npm run webrtc-werift` → <http://127.0.0.1:3016> | **The same page on `werift`** (WebRTC in pure TypeScript, no codecs): `forward` relays the RTP packets themselves (the lowest latency); the other modes go RTP → UDP → ffmpeg decode → Node → ffmpeg VP8 encode → UDP → RTP, with PLI for keyframes and sequence/timestamp re-basing when the source switches |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -171,7 +172,7 @@ src/lib/
   i420.ts      I420 frame effects (gray, negate, mirror, edges), PNG overlay blending, latency stamp
   rtc-modes.ts what the WebRTC examples do to a frame, per mode
   rtc-server.ts server + page for 15/16: signalling (one POST), sample source, stats, latency measurement
-examples/      01…15, one topic per file, numbered in learning order
+examples/      01…16, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
 web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
