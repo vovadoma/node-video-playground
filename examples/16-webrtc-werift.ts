@@ -70,6 +70,12 @@ class FramePath {
     const { width: w, height: h } = this;
     this.decoderPort = await freePort();
     await new Promise<void>((r) => this.fromEncoder.bind(0, '127.0.0.1', r));
+    await new Promise<void>((r) => this.toDecoder.bind(0, '127.0.0.1', r));
+    // a 720p/1080p keyframe leaves the encoder as a burst of dozens of packets — the default socket buffers
+    // drop some of them, and a keyframe with holes can't be decoded by the browser at all
+    for (const [sock, fn] of [[this.fromEncoder, 'setRecvBufferSize'], [this.toDecoder, 'setSendBufferSize']] as const) {
+      try { sock[fn](4 * 1024 * 1024); } catch { /* the OS may cap it — fine */ }
+    }
     this.fromEncoder.on('message', (buf) => this.onRtp(RtpPacket.deSerialize(buf)));
 
     // decoder: the SDP tells ffmpeg "VP8 RTP arrives on this UDP port"
@@ -77,6 +83,7 @@ class FramePath {
     this.decoder = spawn(FFMPEG_BIN, [
       '-hide_banner', '-loglevel', 'error', '-protocol_whitelist', 'pipe,udp,rtp',
       '-fflags', 'nobuffer', '-flags', 'low_delay', '-analyzeduration', '0', '-probesize', '32', '-reorder_queue_size', '0',
+      '-buffer_size', String(8 * 1024 * 1024),   // UDP receive buffer: a 720p/1080p keyframe arrives as a burst of packets
       '-f', 'sdp', '-i', 'pipe:0',
       '-vf', `scale=${w}:${h},format=yuv420p`, '-fps_mode', 'passthrough',   // one frame out per frame in — no duplicates
       '-f', 'rawvideo', '-pix_fmt', 'yuv420p', 'pipe:1',

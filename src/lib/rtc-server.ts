@@ -1,6 +1,7 @@
 /**
- * Server + page shared by the WebRTC examples (15 = @roamhq/wrtc, 16 = werift). The example supplies
- * only `answer()`: take the browser's SDP offer, set up its own peer connection, return the answer.
+ * Server + page shared by the WebRTC examples (15 = @roamhq/wrtc, 16 = werift, 17 = camera + recording).
+ * The example supplies `answer()`: take the browser's SDP offer, set up its own peer, return the answer.
+ * With `recordings` set, the page also gets Record / Snapshot controls and a list of saved files.
  *
  *   browser: camera or a sample video ─▶ canvas (+ latency stamp) ─▶ RTCPeerConnection ══▶ server
  *            ◀══ processed video ══ server           DataChannel "control": mode ▶ / ◀ server stats
@@ -8,7 +9,7 @@
  * Signalling is one HTTP round trip (non-trickle ICE: the server answers once its ICE gathering is done).
  * localhost only — for other machines you'd need HTTPS (getUserMedia), STUN and maybe TURN.
  */
-import { createReadStream, readdirSync, statSync } from 'node:fs';
+import { createReadStream, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { probeSummary } from './ffprobe.js';
@@ -25,6 +26,8 @@ export interface RtcServerOptions {
   port: number;
   root: string;                                   // samples folder (for the "sample video" source)
   answer: (offer: SessionDescription) => Promise<SessionDescription>;
+  /** A folder with recordings: served at /recordings/, listed at /api/recordings, recording UI on the page. */
+  recordings?: string;
 }
 
 export async function startRtcServer(o: RtcServerOptions) {
@@ -32,6 +35,8 @@ export async function startRtcServer(o: RtcServerOptions) {
   const root = path.resolve(o.root);
   const sources = await browserPlayable(root);
   const page = renderPage(o);
+  const recDir = o.recordings && path.resolve(o.recordings);
+  if (recDir) mkdirSync(recDir, { recursive: true });
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', `http://${HOST}`);
@@ -39,6 +44,8 @@ export async function startRtcServer(o: RtcServerOptions) {
       if (url.pathname === '/') return send(res, 200, 'text/html; charset=utf-8', page);
       if (url.pathname === '/api/sources') return send(res, 200, 'application/json', JSON.stringify(sources));
       if (url.pathname.startsWith('/media/')) return sendMedia(req, res, root, decodeURIComponent(url.pathname.slice(7)));
+      if (recDir && url.pathname === '/api/recordings') return send(res, 200, 'application/json', JSON.stringify(listRecordings(recDir)));
+      if (recDir && url.pathname.startsWith('/recordings/')) return sendMedia(req, res, recDir, decodeURIComponent(url.pathname.slice(12)));
       if (url.pathname === '/offer' && req.method === 'POST') {
         const offer = JSON.parse(await body(req)) as SessionDescription;
         const answer = await o.answer(offer);
@@ -79,7 +86,7 @@ function sendMedia(req: IncomingMessage, res: ServerResponse, root: string, rel:
   if (!file.startsWith(root + path.sep)) return send(res, 404, 'text/plain', 'not found');
   let size: number;
   try { size = statSync(file).size; } catch { return send(res, 404, 'text/plain', 'not found'); }
-  const type = file.endsWith('.webm') ? 'video/webm' : 'video/mp4';
+  const type = file.endsWith('.webm') ? 'video/webm' : /\.jpe?g$/.test(file) ? 'image/jpeg' : 'video/mp4';
   const m = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/);
   if (m && (m[1] || m[2])) {
     const start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
@@ -89,6 +96,14 @@ function sendMedia(req: IncomingMessage, res: ServerResponse, root: string, rel:
   }
   res.writeHead(200, { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': size });
   createReadStream(file).on('error', () => res.destroy()).pipe(res);
+}
+
+/** Newest first: name, size, time. */
+function listRecordings(dir: string) {
+  return readdirSync(dir)
+    .filter((n) => /\.(mp4|jpe?g)$/i.test(n))
+    .map((n) => { const st = statSync(path.join(dir, n)); return { name: n, size: st.size, time: st.mtimeMs }; })
+    .sort((a, b) => b.time - a.time);
 }
 
 /** Sample videos a browser <video> can play: MP4 with H.264, WebM with VP8 / VP9 / AV1. */
@@ -111,7 +126,9 @@ async function browserPlayable(root: string): Promise<string[]> {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-function renderPage({ title, subtitle, flow }: RtcServerOptions): string {
+
+function renderPage({ title, subtitle, flow, recordings }: RtcServerOptions): string {
+  const rec = Boolean(recordings);
   return /* html */ `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
@@ -119,12 +136,19 @@ function renderPage({ title, subtitle, flow }: RtcServerOptions): string {
 ${LIVE_CSS}
   .pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px }
   .pair figure { margin:0 } .pair figcaption { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.04em }
-  .pair video { width:100%; aspect-ratio:4/3; background:#000; border-radius:10px; display:block; object-fit:contain }
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:16px }
-  .kpis div { background:var(--surface); padding:10px 12px } .kpis b { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
+  .pair video { width:100%; aspect-ratio:16/9; background:#000; border-radius:10px; display:block; object-fit:contain }
+  .mirrored { transform:scaleX(-1) }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:16px }
+  .kpis div { padding:10px 12px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); margin:0 -1px -1px 0 } .kpis b { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
   .kpis span { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums }
   .hidden { display:none !important }
-  @media (max-width:720px) { .pair { grid-template-columns:1fr } }
+  .rec { color:#dc2626; font-weight:700 } .rec::before { content:"● " }
+  .files { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); gap:16px; margin-top:12px }
+  .files ul { list-style:none; margin:0; padding:0; max-height:360px; overflow:auto; border:1px solid var(--border); border-radius:8px }
+  .files li { padding:8px 12px; border-bottom:1px solid var(--border); cursor:pointer; display:flex; justify-content:space-between; gap:8px; font-size:13px }
+  .files li:hover, .files li.on { background:var(--soft) } .files li span { color:var(--muted); white-space:nowrap }
+  .viewer video, .viewer img { width:100%; border-radius:10px; background:#000; display:block }
+  @media (max-width:720px) { .pair, .files { grid-template-columns:1fr } }
 </style></head>
 <body>
 <header><div>
@@ -135,7 +159,10 @@ ${LIVE_CSS}
 <main>
   <div class="panel">
     <div class="controls">
-      <label>Source <select id="source"><option value="camera">Camera</option></select></label>
+      <label>Source <select id="source"><option value="camera:">Camera (default)</option></select></label>
+      <label class="cam">Resolution <select id="res"><option value="640x480">480p · 640×480</option><option value="1280x720" selected>720p · 1280×720</option><option value="1920x1080">1080p · 1920×1080</option></select></label>
+      <label class="cam">FPS <select id="fps"><option>15</option><option selected>30</option></select></label>
+      <label class="cam">&nbsp;<span class="check"><input type="checkbox" id="mirror" checked> mirror preview</span></label>
       <label>Mode <select id="mode">${RTC_MODES.map((m) => `<option value="${m}">${m}</option>`).join('')}</select></label>
       <label id="effectBox" class="hidden">Effect <select id="effect"><option>gray</option><option>negate</option><option>mirror</option><option>edges</option></select></label>
       <label id="splitBox" class="hidden">&nbsp;<span class="check"><input type="checkbox" id="split"> before / after</span></label>
@@ -146,7 +173,7 @@ ${LIVE_CSS}
       <figure><figcaption>Sent to the server (with latency stamp)</figcaption><video id="local" autoplay muted playsinline></video></figure>
       <figure><figcaption>Came back from the server</figcaption><video id="remote" autoplay muted playsinline></video></figure>
     </div>
-    <div class="note" id="note">Press Start. Modes switch live over the DataChannel — no reconnect.</div>
+    <div class="note" id="note">Press Start. The browser asks for camera access the first time. Modes switch live over the DataChannel.</div>
     <div class="kpis">
       <div><b>Round trip (stamp)</b><span id="lat">—</span></div>
       <div><b>Latency min / p95</b><span id="latmm">—</span></div>
@@ -157,44 +184,92 @@ ${LIVE_CSS}
       <div><b>Server</b><span id="srv">—</span></div>
     </div>
   </div>
+  <div class="panel${rec ? '' : ' hidden'}" id="recPanel">
+    <div class="controls">
+      <label>Record <select id="recWhat"><option value="in">what the camera sent (original)</option><option value="out">what the server sends back (processed)</option></select></label>
+      <div class="buttons"><button class="primary" id="recStart" disabled>● Record</button> <button id="recStop" disabled>■ Stop recording</button> <button id="snap" disabled>Snapshot</button></div>
+      <span id="recState" class="note"></span>
+    </div>
+    <div class="files">
+      <ul id="files"></ul>
+      <div class="viewer" id="viewer"><p class="note">Recordings and snapshots are saved on the server; pick one to play it here.</p></div>
+    </div>
+  </div>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-const BLOCK = ${STAMP.block}, BITS = ${STAMP.bits}, W = 640;
-let pc, dc, srcVideo, srcStream, drawing = false, lats = [], lastStats = {}, size = null;
+const BLOCK = ${STAMP.block}, BITS = ${STAMP.bits}, REC = ${rec};
+let W = 640, pc, dc, srcVideo, srcStream, drawing = false, lats = [], lastStats = {}, size = null;
 
+// ---- sources: cameras (labels appear after the first permission grant) + sample videos
+async function listCameras() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+  const sel = $('#source'), keep = sel.value;
+  sel.querySelectorAll('option[value^="camera:"]').forEach((o) => o.remove());
+  const opts = cams.length ? cams.map((c, i) => new Option('Camera: ' + (c.label || 'camera ' + (i + 1)), 'camera:' + c.deviceId)) : [new Option('Camera (default)', 'camera:')];
+  sel.prepend(...opts);
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : opts[0].value;
+  showParams();
+}
 fetch('/api/sources').then((r) => r.json()).then((list) => {
   for (const p of list) $('#source').append(new Option('sample: ' + p, p));
-  if (list.length) $('#source').value = list.find((p) => p.includes('mp4_h264_aac')) ?? list[0];
+  listCameras();
 });
+navigator.mediaDevices?.addEventListener?.('devicechange', listCameras);
+
+/** DataChannel message — silently skipped when the channel isn't open (never throws). */
+function send(m) { if (dc?.readyState === 'open') dc.send(JSON.stringify(m)); }
 
 function showParams() {
-  const m = $('#mode').value;
+  const m = $('#mode').value, cam = $('#source').value.startsWith('camera:');
   $('#effectBox').classList.toggle('hidden', m !== 'effects');
   $('#splitBox').classList.toggle('hidden', m !== 'effects');
   $('#ratioBox').classList.toggle('hidden', m !== 'tracker');
+  document.querySelectorAll('.cam').forEach((el) => el.classList.toggle('hidden', !cam));
+  $('#local').classList.toggle('mirrored', cam && $('#mirror').checked);
 }
 function control() {
   showParams();
   // size = what we send: an engine that decodes with ffmpeg must know it to keep the frame (and the stamp) intact
-  if (dc?.readyState === 'open') dc.send(JSON.stringify({ mode: $('#mode').value, size, params: { effect: $('#effect').value, split: $('#split').checked, ratio: Number($('#ratio').value) } }));
+  const live = $('#source').value.startsWith('camera:');
+  send({ mode: $('#mode').value, size, params: { effect: $('#effect').value, split: $('#split').checked, ratio: Number($('#ratio').value), fps: live ? Number($('#fps').value) : 30 } });
   lats = [];
 }
 ['#mode', '#effect', '#split', '#ratio'].forEach((s) => $(s).addEventListener('change', control));
+['#source', '#mirror'].forEach((s) => $(s).addEventListener('change', showParams));
 showParams();
 
-/** Source → canvas (640 wide) with the stamp written into the bottom-left strip → captureStream. */
+const CAMERA_ERRORS = {
+  NotAllowedError: 'Camera access was denied — allow it via the camera icon in the address bar, then press Start again.',
+  NotFoundError: 'No camera found.',
+  NotReadableError: 'The camera is busy — another app (Zoom, FaceTime, …) is using it.',
+  OverconstrainedError: 'This camera can’t do the chosen resolution — try a lower one.',
+  SecurityError: 'Camera access needs https:// or http://localhost / 127.0.0.1.',
+};
+
+/** Source → canvas (its own size, ≤ 1920 wide) with the stamp in the bottom-left strip → captureStream. */
 async function makeSource() {
   srcVideo = document.createElement('video');
   srcVideo.muted = true; srcVideo.playsInline = true; srcVideo.loop = true;
-  if ($('#source').value === 'camera') {
-    srcStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+  const src = $('#source').value;
+  const fps = Number($('#fps').value);
+  if (src.startsWith('camera:')) {
+    const [w, h] = $('#res').value.split('x').map(Number);
+    const deviceId = src.slice(7);
+    try {
+      srcStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: w }, height: { ideal: h }, frameRate: { ideal: fps }, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) } });
+    } catch (e) {
+      throw new Error(CAMERA_ERRORS[e.name] ?? e.message);
+    }
     srcVideo.srcObject = srcStream;
+    listCameras();                                   // now the labels are known
   } else {
-    srcVideo.src = '/media/' + $('#source').value.split('/').map(encodeURIComponent).join('/');
+    srcVideo.src = '/media/' + src.split('/').map(encodeURIComponent).join('/');
   }
   await srcVideo.play();
   await new Promise((r) => (srcVideo.videoWidth ? r() : srcVideo.addEventListener('loadedmetadata', r, { once: true })));
+  W = Math.min(1920, Math.round(srcVideo.videoWidth / 2) * 2);
   const H = Math.round((W * srcVideo.videoHeight) / srcVideo.videoWidth / 2) * 2;
   size = { width: W, height: H };
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
@@ -210,10 +285,10 @@ async function makeSource() {
       ctx.fillStyle = (t >> (BITS - 1 - i)) & 1 ? '#fff' : '#000';
       ctx.fillRect((i + 2) * BLOCK, H - BLOCK, BLOCK, BLOCK);
     }
-    srcVideo.requestVideoFrameCallback ? srcVideo.requestVideoFrameCallback(frame) : setTimeout(frame, 33);
+    srcVideo.requestVideoFrameCallback ? srcVideo.requestVideoFrameCallback(frame) : setTimeout(frame, 1000 / fps);
   };
   frame();
-  return canvas.captureStream(30);
+  return canvas.captureStream(fps);
 }
 
 /** Read the stamp back from every returned frame → round-trip latency. */
@@ -246,16 +321,22 @@ async function start() {
   $('#local').srcObject = stream;
   // max-bundle: one ICE/DTLS transport for video + DataChannel from the start (werift needs it; wrtc doesn't mind)
   pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
-  pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendrecv' });
+  const tx = pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendrecv' });
+  // keep the resolution (drop frames instead of scaling down) and allow enough bitrate for it
+  const params = tx.sender.getParameters();
+  params.degradationPreference = 'maintain-resolution';
+  params.encodings = [{ ...(params.encodings?.[0] ?? {}), maxBitrate: Math.round(size.width * size.height * 4) }];
+  tx.sender.setParameters(params).catch((e) => console.warn('setParameters:', e));
   dc = pc.createDataChannel('control');
-  dc.onopen = control;
-  dc.onmessage = (e) => {
-    const s = JSON.parse(e.data);
-    $('#srv').textContent = s.mode + ' · ' + s.fpsIn + '→' + s.fpsOut + ' fps · ' + s.ms.toFixed(1) + ' ms/f';
-    $('#srv').title = s.width + 'x' + s.height;
-  };
+  dc.onopen = () => { control(); setRecButtons(true); };
+  dc.onmessage = (e) => onServer(JSON.parse(e.data));
   pc.ontrack = (e) => { $('#remote').srcObject = new MediaStream([e.track]); watchLatency($('#remote')); };
-  pc.onconnectionstatechange = () => { $('#note').textContent = 'Connection: ' + pc.connectionState; };
+  pc.onconnectionstatechange = () => {
+    const st = pc?.connectionState;
+    if (!st) return;
+    $('#note').textContent = 'Connection: ' + st + ' · sending ' + size.width + '×' + size.height;
+    if (st === 'failed' || st === 'disconnected' || st === 'closed') { stop(); $('#note').textContent = 'Connection ' + st + ' — press Start to reconnect (a recording in progress was saved by the server).'; loadFiles(); }
+  };
   await pc.setLocalDescription(await pc.createOffer());
   await new Promise((r) => { if (pc.iceGatheringState === 'complete') r(); pc.onicegatheringstatechange = () => pc.iceGatheringState === 'complete' && r(); setTimeout(r, 2000); });
   const res = await fetch('/offer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(pc.localDescription) });
@@ -270,9 +351,57 @@ function stop() {
   pc?.close(); pc = undefined; dc = undefined;
   $('#local').srcObject = null; $('#remote').srcObject = null;
   lats = []; lastStats = {};
+  setRecButtons(false);
+  $('#recState').textContent = '';
 }
-$('#start').onclick = () => start().catch((e) => { $('#note').textContent = 'Error: ' + e.message; });
+$('#start').onclick = () => start().catch((e) => { $('#note').textContent = e.message; stop(); });
 $('#stop').onclick = () => { stop(); $('#note').textContent = 'Stopped'; };
+
+// ---- messages from the server: stats every second, recording state, new files
+function onServer(m) {
+  if ('fpsIn' in m) {
+    $('#srv').textContent = m.mode + ' · ' + m.fpsIn + '→' + m.fpsOut + ' fps · ' + m.ms.toFixed(1) + ' ms/f';
+    $('#srv').title = m.width + 'x' + m.height;
+  }
+  if (m.recording) {
+    const r = m.recording;
+    $('#recState').className = r.active ? 'rec' : 'note';
+    $('#recState').textContent = r.active ? 'REC ' + r.seconds.toFixed(0) + ' s · ' + r.frames + ' frames' + (r.dropped ? ' · ' + r.dropped + ' dropped' : '') + ' · ' + r.what : r.message ?? '';
+    $('#recStart').disabled = r.active; $('#recStop').disabled = !r.active;
+  }
+  if (m.saved) loadFiles(m.saved);
+}
+
+// ---- recording UI (only when the server keeps recordings)
+function setRecButtons(on) {
+  if (!REC) return;
+  $('#recStart').disabled = !on; $('#snap').disabled = !on; $('#recStop').disabled = true;
+}
+$('#recStart').onclick = () => send({ record: 'start', what: $('#recWhat').value });
+$('#recStop').onclick = () => send({ record: 'stop' });
+$('#snap').onclick = () => send({ snapshot: $('#recWhat').value });
+
+const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+async function loadFiles(select) {
+  if (!REC) return;
+  const list = await (await fetch('/api/recordings')).json();
+  $('#files').replaceChildren(...list.map((f) => {
+    const li = document.createElement('li');
+    li.dataset.name = f.name;
+    li.append(Object.assign(document.createElement('b'), { textContent: f.name }), Object.assign(document.createElement('span'), { textContent: kb(f.size) }));
+    li.onclick = () => view(f.name);
+    return li;
+  }));
+  if (select) view(select);
+}
+function view(name) {
+  document.querySelectorAll('#files li').forEach((li) => li.classList.toggle('on', li.dataset.name === name));
+  const url = '/recordings/' + encodeURIComponent(name);
+  const el = /\\.jpe?g$/i.test(name) ? Object.assign(document.createElement('img'), { src: url }) : Object.assign(document.createElement('video'), { src: url, controls: true, autoplay: true, muted: true });
+  const link = Object.assign(document.createElement('a'), { href: url, download: name, textContent: 'Download ' + name, className: 'note' });
+  $('#viewer').replaceChildren(el, link);
+}
+loadFiles();
 
 setInterval(async () => {
   if (lats.length) {

@@ -1,5 +1,5 @@
 /**
- * What the WebRTC examples (15, 16) do to a frame on the server, by mode. Frames are I420 Buffers;
+ * What the WebRTC examples (15–17) do to a frame on the server, by mode. Frames are I420 Buffers;
  * the page's latency stamp (bottom-left strip, see i420.ts) is saved before and restored after.
  *
  *   forward    the engine sends the received video straight back (not handled here)
@@ -21,6 +21,7 @@ export interface RtcParams {
   effect?: I420Effect;
   split?: boolean;
   ratio?: number;               // tracker: sight speed / target speed
+  fps?: number;                 // what the page sends — the tracker converts px/frame to px/s with it
 }
 
 const LOGO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'examples', 'assets', 'watermark.png');
@@ -31,10 +32,10 @@ export class FrameModes {
   private seeker?: { key: string; s: Seeker };
 
   /** Returns the frame to send (the tracker returns the previous one — it needs t+1 to see motion at t), or null. */
-  process(frame: Buffer, w: number, h: number, mode: RtcMode, p: RtcParams, fps = 30): Buffer | null {
+  process(frame: Buffer, w: number, h: number, mode: RtcMode, p: RtcParams, fps = p.fps || 30): Buffer | null {
     if (mode === 'forward' || mode === 'frames') return frame;
     if (mode === 'tracker') {
-      const key = `${w}x${h}:${p.ratio ?? 0.6}`;
+      const key = `${w}x${h}:${p.ratio ?? 0.6}:${fps}`;
       if (this.seeker?.key !== key) this.seeker = { key, s: new Seeker({ width: w, height: h, fps, ratio: p.ratio ?? 0.6 }) };
       const view = this.seeker.s.push(Buffer.from(frame));          // a copy: the engine may reuse its buffer
       if (!view) return null;
