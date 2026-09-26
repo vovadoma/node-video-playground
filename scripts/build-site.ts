@@ -194,7 +194,6 @@ ${more}
 </body></html>`;
 
 writeFileSync(path.join(OUT, 'index.html'), html);
-writeFileSync(path.join(OUT, '.nojekyll'), '');
 const withMedia = examples.filter((e) => existsSync(path.join(MEDIA, `${e.num}.webp`))).length;
 console.log(`site/index.html — ${examples.length} examples (${withMedia} with pictures)`);
 
