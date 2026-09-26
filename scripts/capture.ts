@@ -125,7 +125,8 @@ const LIVE: Record<string, { script: string; port: number; params: string; pageC
   '10': { script: '10-live-watermark', port: 3010, params: 'wm_pos=float&wm_size=25&wm_opacity=0.7&fx=none&split=0', pageControls: { '[data-param=wm_pos]': 'float' } },
   '11': { script: '11-live-pip', port: 3011, params: 'pip=real-world/sample.mkv&pip_pos=br&pip_size=33&pip_frame=white&pip_end=freeze&audio=main&fx=none&split=0' },
   '13': { script: '13-track-live', port: 3013, params: 'target=1&debug=0' },
-  '14': { script: '14-intercept', port: 3014, params: 'bg=still&speed=420&size=medium&ratio=0.6', pageControls: { '[data-param=bg]': 'still' }, clipSeconds: 9, startDelay: 8000 },
+  // seed 215: the ball enters the centre square within a second, then the sight intercepts it a few times
+  '14': { script: '14-intercept', port: 3014, params: 'bg=still&speed=420&size=medium&ratio=0.6&seed=215', pageControls: { '[data-param=bg]': 'still', '[data-param=seed]': '215' }, clipSeconds: 9, startDelay: 3500 },
 };
 const RTC: Record<string, { script: string; port: number; source: string; controls: Record<string, string | boolean>; record?: string }> = {
   '15': { script: '15-webrtc-wrtc', port: 3015, source: 'camera:', controls: { '#mode': 'effects', '#effect': 'negate', '#split': true } },
