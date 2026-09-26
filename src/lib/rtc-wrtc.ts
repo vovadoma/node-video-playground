@@ -7,8 +7,12 @@
  *
  * Hooks let an example add behaviour without copying this file:
  *   onMessage  extra DataChannel messages (anything besides the mode switch), with a way to answer
+ *   compose    edit the main frame before FrameModes, e.g. paste another track into it (example 19)
  *   tap        sees every frame before ('in') and after ('out') processing — copy it if you keep it
  *   onClose    the peer went away
+ *
+ * More than one video track may come in: the first m-line is the main picture (it is also the one we
+ * send back on); for every other track the latest frame is kept in `peer.extras` (recvonly).
  */
 import wrtc from '@roamhq/wrtc';
 import { bufferOf } from './i420.js';
@@ -17,15 +21,22 @@ import type { SessionDescription } from './rtc-server.js';
 
 const { RTCPeerConnection, nonstandard: { RTCVideoSink, RTCVideoSource } } = wrtc;
 
+export interface ExtraFrame { data: Buffer; width: number; height: number; at: number }
+
 export interface WrtcPeer {
   id: number;
   mode: RtcMode;
+  /** Everything the page sent in `params` (effect, ratio, and whatever an example adds). */
+  params: RtcParams & Record<string, unknown>;
+  /** Latest frame of each extra incoming video track, in m-line order. */
+  extras: (ExtraFrame | undefined)[];
   /** Send a JSON message to the page over the DataChannel. */
   send(message: object): void;
 }
 
 export interface WrtcHooks {
   onMessage?(message: Record<string, unknown>, peer: WrtcPeer): void;
+  compose?(frame: Buffer, width: number, height: number, peer: WrtcPeer): void;
   tap?(stage: 'in' | 'out', frame: Buffer, width: number, height: number, peer: WrtcPeer): void;
   onClose?(peer: WrtcPeer): void;
 }
@@ -37,9 +48,8 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
   const source = new RTCVideoSource();
   const processed = source.createTrack();
   const modes = new FrameModes();
-  let params: RtcParams = {};
   let received: InstanceType<typeof wrtc.MediaStreamTrack> | undefined;
-  let sink: InstanceType<typeof RTCVideoSink> | undefined;
+  const sinks: InstanceType<typeof RTCVideoSink>[] = [];
   let sender: InstanceType<typeof wrtc.RTCRtpSender> | undefined;
   let channel: InstanceType<typeof wrtc.RTCDataChannel> | undefined;
   let timer: NodeJS.Timeout | undefined;
@@ -49,15 +59,17 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
   const peer: WrtcPeer = {
     id: ++peers,
     mode: 'forward',
+    params: {},
+    extras: [],
     send: (m) => { if (channel?.readyState === 'open') channel.send(JSON.stringify(m)); },
   };
   const applyMode = () => sender?.replaceTrack(peer.mode === 'forward' && received ? received : processed).catch(() => {});
 
-  // The browser's offer has one sendrecv video m-line: its track comes in here, and we send back on the same transceiver.
-  pc.ontrack = ({ track }) => {
-    if (track.kind !== 'video') return;
+  /** The main track: sink → (compose) → FrameModes → source. */
+  const wireMain = (track: InstanceType<typeof wrtc.MediaStreamTrack>) => {
     received = track;
-    sink = new RTCVideoSink(track);
+    const sink = new RTCVideoSink(track);
+    sinks.push(sink);
     sink.onframe = ({ frame }: { frame: { width: number; height: number; data: Uint8Array } }) => {
       const { width: w, height: h } = frame;
       stats.in++; stats.width = w; stats.height = h;
@@ -65,7 +77,8 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
       hooks.tap?.('in', buf, w, h, peer);
       if (peer.mode === 'forward') { hooks.tap?.('out', buf, w, h, peer); return; }   // libwebrtc forwards the track itself
       const t0 = performance.now();
-      const out = modes.process(buf, w, h, peer.mode, params);
+      hooks.compose?.(buf, w, h, peer);
+      const out = modes.process(buf, w, h, peer.mode, peer.params);
       stats.ms = stats.ms * 0.9 + (performance.now() - t0) * 0.1;
       if (!out) return;
       hooks.tap?.('out', out, w, h, peer);
@@ -73,7 +86,15 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
       source.onFrame({ width: w, height: h, data: new Uint8ClampedArray(out.buffer, out.byteOffset, out.byteLength) as unknown as Uint8Array });
       stats.out++;
     };
-    applyMode();
+  };
+
+  /** An extra track: keep a copy of its latest frame for compose(). */
+  const wireExtra = (track: InstanceType<typeof wrtc.MediaStreamTrack>, index: number) => {
+    const sink = new RTCVideoSink(track);
+    sinks.push(sink);
+    sink.onframe = ({ frame }: { frame: { width: number; height: number; data: Uint8Array } }) => {
+      peer.extras[index] = { data: Buffer.from(bufferOf(frame.data)), width: frame.width, height: frame.height, at: Date.now() };
+    };
   };
 
   pc.ondatachannel = ({ channel: ch }) => {
@@ -82,9 +103,10 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
       const m = JSON.parse(String(e.data));
       if (m.mode !== undefined) {
         if (RTC_MODES.includes(m.mode)) peer.mode = m.mode;
-        params = m.params ?? {};
+        peer.params = m.params ?? {};
         applyMode();
-        console.log(`  peer ${peer.id}: mode=${peer.mode}${peer.mode === 'effects' ? ` ${params.effect}${params.split ? '+split' : ''}` : ''}${peer.mode === 'tracker' ? ` ratio=${params.ratio}` : ''}`);
+        const p = peer.params;
+        console.log(`  peer ${peer.id}: mode=${peer.mode}${peer.mode === 'effects' ? ` ${p.effect}${p.split ? '+split' : ''}` : ''}${peer.mode === 'tracker' ? ` ratio=${p.ratio}` : ''}`);
       }
       hooks.onMessage?.(m, peer);
     };
@@ -101,7 +123,7 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
     if (!closed && ['closed', 'failed', 'disconnected'].includes(pc.connectionState)) {
       closed = true;
       clearInterval(timer);
-      sink?.stop();
+      sinks.forEach((k) => k.stop());
       processed.stop();
       pc.close();
       hooks.onClose?.(peer);
@@ -109,11 +131,15 @@ export async function answerWithWrtc(offer: SessionDescription, hooks: WrtcHooks
   };
 
   await pc.setRemoteDescription(offer);
-  // the transceiver the offer created carries both directions: what the browser sends and what we send back
-  const transceiver = pc.getTransceivers().find((t) => t.receiver.track.kind === 'video');
-  if (!transceiver) throw new Error('the offer has no video');
-  transceiver.direction = 'sendrecv';
-  sender = transceiver.sender;
+  // the first video transceiver carries both directions (what the browser sends, what we send back);
+  // any further ones only receive
+  const video = pc.getTransceivers().filter((t) => t.receiver.track.kind === 'video');
+  if (!video.length) throw new Error('the offer has no video');
+  video[0].direction = 'sendrecv';
+  video.slice(1).forEach((t) => { t.direction = 'recvonly'; });
+  sender = video[0].sender;
+  // each receiver's track exists as soon as the offer is applied
+  video.forEach((t, i) => (i === 0 ? wireMain(t.receiver.track) : wireExtra(t.receiver.track, i - 1)));
   await applyMode();
   await pc.setLocalDescription(await pc.createAnswer());
   // non-trickle: wait until all local ICE candidates are in the SDP (localhost → only host candidates, fast)

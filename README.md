@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-18-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-19-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -36,7 +36,7 @@ npm run audio                    # EBU R128 loudness + loudnorm on a real voice 
 npm run web                      # browse & play every sample at http://127.0.0.1:3000
 ```
 
-**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional. Examples 15–18 add `@roamhq/wrtc` (prebuilt libwebrtc addon) and `werift`; they run on localhost only (for other machines you'd need HTTPS, STUN and possibly TURN).
+**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional. Examples 15–19 add `@roamhq/wrtc` (prebuilt libwebrtc addon) and `werift`; they run on localhost only (for other machines you'd need HTTPS, STUN and possibly TURN).
 
 ## Test media
 
@@ -73,6 +73,7 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 16 | `npm run webrtc-werift` → <http://127.0.0.1:3016> | **The same page on `werift`** (WebRTC in pure TypeScript, no codecs): `forward` relays the RTP packets themselves (the lowest latency); the other modes go RTP → UDP → ffmpeg decode → Node → ffmpeg VP8 encode → UDP → RTP, with PLI for keyframes and sequence/timestamp re-basing when the source switches |
 | 17 | `npm run camera` → <http://127.0.0.1:3017> | **Your real camera + recording on the server**: pick the camera, 480p / 720p / 1080p and fps in the browser (clear messages when access is denied or the camera is busy), send it to Node over WebRTC and get it back as is or processed; **Record** writes the original or the processed frames to `output/camera/rec-….mp4` (ffmpeg, wall-clock timestamps → real speed), **Snapshot** saves a JPEG; files are listed and playable right on the page |
 | 18 | `npm run screen` → <http://127.0.0.1:3018> | **Screen capture**: share the entire screen, a window or a tab (`getDisplayMedia`, `contentHint = 'detail'` for sharp text), stream it to Node over WebRTC; the default `changes` mode outlines the regions that changed since the previous frame (dirty rectangles) with the share of the picture that changed; record it to `output/screen/`. On macOS the browser needs Screen Recording permission |
+| 19 | `npm run screen-camera` → <http://127.0.0.1:3019> | **Screen + camera in one picture**: the browser sends two tracks on one peer connection — the screen (sendrecv) and a camera (sendonly); Node pastes the camera's newest frame into a window on every screen frame (bilinear, cover-fit, mirror, rectangle or circle, corner and size switchable live) and sends one composed picture back; record it to `output/screen-camera/` |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -171,12 +172,12 @@ src/lib/
   motion.ts    motion detection & tracking: three-frame difference, blobs, α-β tracker, scoring, TargetTracker
   draw.ts      drawing into yuv420p: lines, circles, crosshair, brackets, a 3×5 pixel font
   intercept.ts Seeker: capture gate + slower sight flying to the intercept point (pixels only) · drawSeeker()
-  i420.ts      I420 frame effects (gray, negate, mirror, edges), PNG overlay blending, latency stamp
+  i420.ts      I420 frame effects (gray, negate, mirror, edges), PNG overlay blending, latency stamp, drawScaled() for PiP windows
   rtc-modes.ts what the WebRTC examples do to a frame, per mode
-  rtc-server.ts server + page for 15–18: signalling (one POST), camera / screen / sample source, stats, latency measurement, recordings
-  rtc-wrtc.ts  one @roamhq/wrtc peer (sink → FrameModes → source) with hooks — used by 15, 17, 18
-  recorder.ts  FrameRecorder (I420 frames → MP4 with real timing), snapshot() → JPEG, recordingHooks() for 17/18
-examples/      01…18, one topic per file, numbered in learning order
+  rtc-server.ts server + page for 15–19: signalling (one POST), camera / screen / sample source, stats, latency measurement, recordings
+  rtc-wrtc.ts  one @roamhq/wrtc peer (sink → FrameModes → source) with hooks and several incoming tracks — used by 15, 17–19
+  recorder.ts  FrameRecorder (I420 frames → MP4 with real timing), snapshot() → JPEG, recordingHooks() for 17–19
+examples/      01…19, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
 web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs

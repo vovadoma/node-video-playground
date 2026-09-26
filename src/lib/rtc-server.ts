@@ -28,6 +28,8 @@ export interface RtcServerOptions {
   answer: (offer: SessionDescription) => Promise<SessionDescription>;
   /** A folder with recordings: served at /recordings/, listed at /api/recordings, recording UI on the page. */
   recordings?: string;
+  /** Send a second track — a camera — for a picture-in-picture window (example 19); the page gets its controls. */
+  pip?: boolean;
   /** What the page starts with (defaults: the camera, mode forward). */
   defaults?: { source?: 'camera' | 'screen'; mode?: (typeof RTC_MODES)[number] };
 }
@@ -129,7 +131,7 @@ async function browserPlayable(root: string): Promise<string[]> {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 
-function renderPage({ title, subtitle, flow, recordings, defaults = {} }: RtcServerOptions): string {
+function renderPage({ title, subtitle, flow, recordings, defaults = {}, pip = false }: RtcServerOptions): string {
   const rec = Boolean(recordings);
   return /* html */ `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -140,6 +142,8 @@ ${LIVE_CSS}
   .pair figure { margin:0 } .pair figcaption { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; text-transform:uppercase; letter-spacing:.04em }
   .pair video { width:100%; aspect-ratio:16/9; background:#000; border-radius:10px; display:block; object-fit:contain }
   .mirrored { transform:scaleX(-1) }
+  .pair figure { position:relative }
+  .pipPreview { position:absolute; right:10px; bottom:10px; width:24% !important; aspect-ratio:16/9 !important; border:2px solid #fff; border-radius:8px !important; box-shadow:0 2px 8px rgba(0,0,0,.4) }
   .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-top:16px }
   .kpis div { padding:10px 12px; border-right:1px solid var(--border); border-bottom:1px solid var(--border); margin:0 -1px -1px 0 } .kpis b { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
   .kpis span { font-size:18px; font-weight:600; font-variant-numeric:tabular-nums }
@@ -171,8 +175,15 @@ ${LIVE_CSS}
       <label id="ratioBox" class="hidden">Sight / target speed <select id="ratio"><option>0.4</option><option selected>0.6</option><option>0.8</option><option>1</option></select></label>
       <div class="buttons"><button class="primary" id="start">Start</button> <button id="stop">Stop</button></div>
     </div>
+    <div class="controls${pip ? '' : ' hidden'}" style="margin-top:12px">
+      <label>Camera window <select id="cam2"><option value="camera:">Camera (default)</option><option value="">none</option></select></label>
+      <label>Corner <select id="pipPos"><option value="br">bottom right</option><option value="bl">bottom left</option><option value="tr">top right</option><option value="tl">top left</option></select></label>
+      <label>Size <select id="pipSize"><option value="15">15%</option><option value="20">20%</option><option value="25" selected>25%</option><option value="33">33%</option></select></label>
+      <label>Shape <select id="pipShape"><option value="rect">rectangle</option><option value="circle">circle</option></select></label>
+      <label>&nbsp;<span class="check"><input type="checkbox" id="pipMirror" checked> mirror camera</span></label>
+    </div>
     <div class="pair">
-      <figure><figcaption>Sent to the server (with latency stamp)</figcaption><video id="local" autoplay muted playsinline></video></figure>
+      <figure><figcaption>Sent to the server (with latency stamp)</figcaption><video id="local" autoplay muted playsinline></video>${pip ? '<video id="localCam" class="pipPreview hidden" autoplay muted playsinline></video>' : ''}</figure>
       <figure><figcaption>Came back from the server</figcaption><video id="remote" autoplay muted playsinline></video></figure>
     </div>
     <div class="note" id="note">Press Start. The browser asks for camera access the first time. Modes switch live over the DataChannel.</div>
@@ -200,8 +211,8 @@ ${LIVE_CSS}
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
-const BLOCK = ${STAMP.block}, BITS = ${STAMP.bits}, REC = ${rec};
-let W = 640, pc, dc, srcVideo, srcStream, drawing = false, lats = [], lastStats = {}, size = null;
+const BLOCK = ${STAMP.block}, BITS = ${STAMP.bits}, REC = ${rec}, PIP = ${pip};
+let W = 640, pc, dc, srcVideo, srcStream, camStream, drawing = false, lats = [], lastStats = {}, size = null;
 
 // ---- sources: cameras (labels appear after the first permission grant) + sample videos
 async function listCameras() {
@@ -212,6 +223,11 @@ async function listCameras() {
   const opts = cams.length ? cams.map((c, i) => new Option('Camera: ' + (c.label || 'camera ' + (i + 1)), 'camera:' + c.deviceId)) : [new Option('Camera (default)', 'camera:')];
   sel.prepend(...opts);
   sel.value = [...sel.options].some((o) => o.value === keep) ? keep : keep.startsWith('camera:') ? opts[0].value : keep;
+  if (PIP) {
+    const c2 = $('#cam2'), keep2 = c2.value;
+    c2.replaceChildren(...opts.map((o) => new Option(o.text, o.value)), new Option('none', ''));
+    c2.value = [...c2.options].some((o) => o.value === keep2) ? keep2 : c2.options[0].value;
+  }
   showParams();
 }
 fetch('/api/sources').then((r) => r.json()).then((list) => {
@@ -236,10 +252,12 @@ function control() {
   showParams();
   // size = what we send: an engine that decodes with ffmpeg must know it to keep the frame (and the stamp) intact
   const live = $('#source').value.startsWith('camera:') || $('#source').value === 'screen:';
-  send({ mode: $('#mode').value, size, params: { effect: $('#effect').value, split: $('#split').checked, ratio: Number($('#ratio').value), fps: live ? Number($('#fps').value) : 30 } });
+  const pipParams = PIP ? { pipOn: Boolean(camStream), pipPos: $('#pipPos').value, pipSize: Number($('#pipSize').value), pipShape: $('#pipShape').value, pipMirror: $('#pipMirror').checked } : {};
+  send({ mode: $('#mode').value, size, params: { effect: $('#effect').value, split: $('#split').checked, ratio: Number($('#ratio').value), fps: live ? Number($('#fps').value) : 30, ...pipParams } });
+  if (PIP) $('#localCam').classList.toggle('mirrored', $('#pipMirror').checked);
   lats = [];
 }
-['#mode', '#effect', '#split', '#ratio'].forEach((s) => $(s).addEventListener('change', control));
+['#mode', '#effect', '#split', '#ratio', '#pipPos', '#pipSize', '#pipShape', '#pipMirror'].forEach((s) => $(s).addEventListener('change', control));
 ['#source', '#mirror'].forEach((s) => $(s).addEventListener('change', showParams));
 showParams();
 
@@ -339,6 +357,19 @@ async function start() {
   const outTrack = stream.getVideoTracks()[0];
   if ($('#source').value === 'screen:') outTrack.contentHint = 'detail';   // the encoder favours sharp text over frame rate
   const tx = pc.addTransceiver(outTrack, { direction: 'sendrecv' });
+  if (PIP && $('#cam2').value !== '') {
+    // the second track: a camera for the picture-in-picture window (the server only receives it)
+    const id = $('#cam2').value.slice(7);
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 }, ...(id ? { deviceId: { exact: id } } : {}) } });
+    } catch (e) {
+      throw new Error('Camera window: ' + (CAMERA_ERRORS[e.name] ?? e.message));
+    }
+    pc.addTransceiver(camStream.getVideoTracks()[0], { direction: 'sendonly' });
+    $('#localCam').srcObject = camStream;
+    $('#localCam').classList.remove('hidden');
+    listCameras();
+  }
   // keep the resolution (drop frames instead of scaling down) and allow enough bitrate for it
   const params = tx.sender.getParameters();
   params.degradationPreference = 'maintain-resolution';
@@ -364,6 +395,8 @@ async function start() {
 function stop() {
   drawing = false;
   srcStream?.getTracks().forEach((t) => t.stop());
+  camStream?.getTracks().forEach((t) => t.stop()); camStream = undefined;
+  if (PIP) { $('#localCam').srcObject = null; $('#localCam').classList.add('hidden'); }
   srcVideo?.pause();
   pc?.close(); pc = undefined; dc = undefined;
   $('#local').srcObject = null; $('#remote').srcObject = null;

@@ -27,6 +27,7 @@
     "webrtc-werift": "tsx examples/16-webrtc-werift.ts",
     "camera": "tsx examples/17-camera-record.ts",
     "screen": "tsx examples/18-screen-capture.ts",
+    "screen-camera": "tsx examples/19-screen-and-camera.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"

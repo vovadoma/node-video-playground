@@ -130,3 +130,50 @@ export function saveStamp(f: Buffer, w: number, h: number): () => void {
   }
   return () => { for (const s of rows) s.bytes.copy(f, s.at); };
 }
+
+// ---------------------------------------------------------------- picture-in-picture
+
+export interface PipOptions {
+  mirror?: boolean;             // flip horizontally (a selfie camera looks natural mirrored)
+  circle?: boolean;             // round window instead of a rectangle
+}
+
+/**
+ * Scale the I420 frame `src` (sw×sh) into the rectangle (x, y, w, h) of `dst` (W×H): bilinear on Y,
+ * nearest on U/V (half resolution anyway). Cover-fit: the source is cropped to the window's aspect ratio,
+ * never stretched. With `circle`, only the pixels inside the inscribed ellipse are written.
+ */
+export function drawScaled(dst: Buffer, W: number, H: number, src: Buffer, sw: number, sh: number,
+  x: number, y: number, w: number, h: number, o: PipOptions = {}) {
+  const d = planes(W, H), s = planes(sw, sh);
+  x = Math.round(x / 2) * 2; y = Math.round(y / 2) * 2; w = Math.round(w / 2) * 2; h = Math.round(h / 2) * 2;
+  // cover-fit crop of the source
+  const scale = Math.max(w / sw, h / sh);
+  const cw = w / scale, ch = h / scale, cx = (sw - cw) / 2, cy = (sh - ch) / 2;
+  const inside = (px: number, py: number) => {
+    if (!o.circle) return true;
+    const nx = (px + 0.5 - w / 2) / (w / 2), ny = (py + 0.5 - h / 2) / (h / 2);
+    return nx * nx + ny * ny <= 1;
+  };
+  for (let py = 0; py < h; py++) {
+    const ty = y + py;
+    if (ty < 0 || ty >= H) continue;
+    const fy = cy + ((py + 0.5) * ch) / h - 0.5;
+    const y0 = Math.max(0, Math.min(sh - 1, Math.floor(fy))), y1 = Math.min(sh - 1, y0 + 1), wy = Math.min(1, Math.max(0, fy - y0));
+    for (let px = 0; px < w; px++) {
+      const tx = x + px;
+      if (tx < 0 || tx >= W || !inside(px, py)) continue;
+      const qx = o.mirror ? w - 1 - px : px;
+      const fx = cx + ((qx + 0.5) * cw) / w - 0.5;
+      const x0 = Math.max(0, Math.min(sw - 1, Math.floor(fx))), x1 = Math.min(sw - 1, x0 + 1), wx = Math.min(1, Math.max(0, fx - x0));
+      const a = src[y0 * sw + x0], b = src[y0 * sw + x1], c = src[y1 * sw + x0], e = src[y1 * sw + x1];
+      dst[ty * W + tx] = (a * (1 - wx) + b * wx) * (1 - wy) + (c * (1 - wx) + e * wx) * wy;
+      if (!(tx & 1) && !(ty & 1)) {
+        const sc = (Math.min(sh - 1, Math.round(fy)) >> 1) * (sw >> 1) + (Math.min(sw - 1, Math.round(fx)) >> 1);
+        const dc = (ty >> 1) * (W >> 1) + (tx >> 1);
+        dst[d.u + dc] = src[s.u + sc];
+        dst[d.v + dc] = src[s.v + sc];
+      }
+    }
+  }
+}
