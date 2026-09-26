@@ -28,6 +28,8 @@ export interface RtcServerOptions {
   answer: (offer: SessionDescription) => Promise<SessionDescription>;
   /** A folder with recordings: served at /recordings/, listed at /api/recordings, recording UI on the page. */
   recordings?: string;
+  /** What the page starts with (defaults: the camera, mode forward). */
+  defaults?: { source?: 'camera' | 'screen'; mode?: (typeof RTC_MODES)[number] };
 }
 
 export async function startRtcServer(o: RtcServerOptions) {
@@ -127,7 +129,7 @@ async function browserPlayable(root: string): Promise<string[]> {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 
-function renderPage({ title, subtitle, flow, recordings }: RtcServerOptions): string {
+function renderPage({ title, subtitle, flow, recordings, defaults = {} }: RtcServerOptions): string {
   const rec = Boolean(recordings);
   return /* html */ `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -159,11 +161,11 @@ ${LIVE_CSS}
 <main>
   <div class="panel">
     <div class="controls">
-      <label>Source <select id="source"><option value="camera:">Camera (default)</option></select></label>
+      <label>Source <select id="source"><option value="camera:">Camera (default)</option><option value="screen:"${defaults.source === 'screen' ? ' selected' : ''}>Screen / window / tab</option></select></label>
       <label class="cam">Resolution <select id="res"><option value="640x480">480p · 640×480</option><option value="1280x720" selected>720p · 1280×720</option><option value="1920x1080">1080p · 1920×1080</option></select></label>
-      <label class="cam">FPS <select id="fps"><option>15</option><option selected>30</option></select></label>
+      <label class="live">FPS <select id="fps"><option>5</option><option>15</option><option selected>30</option></select></label>
       <label class="cam">&nbsp;<span class="check"><input type="checkbox" id="mirror" checked> mirror preview</span></label>
-      <label>Mode <select id="mode">${RTC_MODES.map((m) => `<option value="${m}">${m}</option>`).join('')}</select></label>
+      <label>Mode <select id="mode">${RTC_MODES.map((m) => `<option value="${m}"${m === defaults.mode ? ' selected' : ''}>${m}</option>`).join('')}</select></label>
       <label id="effectBox" class="hidden">Effect <select id="effect"><option>gray</option><option>negate</option><option>mirror</option><option>edges</option></select></label>
       <label id="splitBox" class="hidden">&nbsp;<span class="check"><input type="checkbox" id="split"> before / after</span></label>
       <label id="ratioBox" class="hidden">Sight / target speed <select id="ratio"><option>0.4</option><option selected>0.6</option><option>0.8</option><option>1</option></select></label>
@@ -209,7 +211,7 @@ async function listCameras() {
   sel.querySelectorAll('option[value^="camera:"]').forEach((o) => o.remove());
   const opts = cams.length ? cams.map((c, i) => new Option('Camera: ' + (c.label || 'camera ' + (i + 1)), 'camera:' + c.deviceId)) : [new Option('Camera (default)', 'camera:')];
   sel.prepend(...opts);
-  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : opts[0].value;
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : keep.startsWith('camera:') ? opts[0].value : keep;
   showParams();
 }
 fetch('/api/sources').then((r) => r.json()).then((list) => {
@@ -222,17 +224,18 @@ navigator.mediaDevices?.addEventListener?.('devicechange', listCameras);
 function send(m) { if (dc?.readyState === 'open') dc.send(JSON.stringify(m)); }
 
 function showParams() {
-  const m = $('#mode').value, cam = $('#source').value.startsWith('camera:');
+  const m = $('#mode').value, cam = $('#source').value.startsWith('camera:'), screen = $('#source').value === 'screen:';
   $('#effectBox').classList.toggle('hidden', m !== 'effects');
   $('#splitBox').classList.toggle('hidden', m !== 'effects');
   $('#ratioBox').classList.toggle('hidden', m !== 'tracker');
   document.querySelectorAll('.cam').forEach((el) => el.classList.toggle('hidden', !cam));
+  document.querySelectorAll('.live').forEach((el) => el.classList.toggle('hidden', !cam && !screen));
   $('#local').classList.toggle('mirrored', cam && $('#mirror').checked);
 }
 function control() {
   showParams();
   // size = what we send: an engine that decodes with ffmpeg must know it to keep the frame (and the stamp) intact
-  const live = $('#source').value.startsWith('camera:');
+  const live = $('#source').value.startsWith('camera:') || $('#source').value === 'screen:';
   send({ mode: $('#mode').value, size, params: { effect: $('#effect').value, split: $('#split').checked, ratio: Number($('#ratio').value), fps: live ? Number($('#fps').value) : 30 } });
   lats = [];
 }
@@ -264,6 +267,18 @@ async function makeSource() {
     }
     srcVideo.srcObject = srcStream;
     listCameras();                                   // now the labels are known
+  } else if (src === 'screen:') {
+    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error('This browser can’t share the screen.');
+    try {
+      // the browser shows its own picker: entire screen, a window or a tab
+      srcStream = await navigator.mediaDevices.getDisplayMedia({ audio: false, video: { frameRate: { ideal: fps, max: fps }, width: { max: 1920 }, height: { max: 1080 } } });
+    } catch (e) {
+      throw new Error(e.name === 'NotAllowedError' ? 'Screen sharing was cancelled (or blocked by the system — on macOS allow the browser in Privacy & Security → Screen Recording).' : e.message);
+    }
+    const track = srcStream.getVideoTracks()[0];
+    track.contentHint = 'detail';                    // screen content: keep text sharp rather than motion smooth
+    track.addEventListener('ended', () => { stop(); $('#note').textContent = 'Screen sharing stopped.'; });   // "Stop sharing" in the browser bar
+    srcVideo.srcObject = srcStream;
   } else {
     srcVideo.src = '/media/' + src.split('/').map(encodeURIComponent).join('/');
   }
@@ -321,7 +336,9 @@ async function start() {
   $('#local').srcObject = stream;
   // max-bundle: one ICE/DTLS transport for video + DataChannel from the start (werift needs it; wrtc doesn't mind)
   pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' });
-  const tx = pc.addTransceiver(stream.getVideoTracks()[0], { direction: 'sendrecv' });
+  const outTrack = stream.getVideoTracks()[0];
+  if ($('#source').value === 'screen:') outTrack.contentHint = 'detail';   // the encoder favours sharp text over frame rate
+  const tx = pc.addTransceiver(outTrack, { direction: 'sendrecv' });
   // keep the resolution (drop frames instead of scaling down) and allow enough bitrate for it
   const params = tx.sender.getParameters();
   params.degradationPreference = 'maintain-resolution';
