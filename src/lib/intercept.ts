@@ -13,6 +13,7 @@
  * Detection = three-frame difference → blobs → α-β tracks (src/lib/motion.ts). "Small" means the blob fits
  * well inside the gate — that is a property of the sensor, not knowledge about what is out there.
  */
+import { Canvas, COLORS, rgb } from './draw.js';
 import { bounce, motionFrame, MotionDetector, Tracker, type Blob, type Track } from './motion.js';
 
 export type SeekerState = 'WATCH' | 'CAPTURED' | 'COAST' | 'RETURN';
@@ -173,4 +174,38 @@ function approach(from: Point, to: Point, step: number): Point {
   const d = dist(from, to);
   if (d <= step || d === 0) return { ...to };
   return { x: from.x + ((to.x - from.x) * step) / d, y: from.y + ((to.y - from.y) * step) / d };
+}
+
+// ---------------------------------------------------------------- drawing
+
+const CYAN = rgb(34, 211, 238), MAGENTA = rgb(217, 70, 239), GREY = rgb(156, 163, 175);
+const GATE_COLOR = { WATCH: COLORS.white, CAPTURED: COLORS.lock, COAST: COLORS.lost, RETURN: GREY } as const;
+
+/** Draw the gate, the predicted path, the intercept point and the sight — everything comes from the view, i.e. from pixels. */
+export function drawSeeker(cv: Canvas, v: SeekerView, ratio: number, debug = false) {
+  const H = cv.height;
+  if (debug) for (const b of v.blobs) cv.brackets(b.minX * 4 - 3, b.minY * 4 - 3, (b.maxX + 1) * 4 + 3, (b.maxY + 1) * 4 + 3, COLORS.white, 1, 0.35);
+
+  // the gate: a square with tick marks in the middle of each side
+  const g = v.gate, h = g.size / 2, col = GATE_COLOR[v.state];
+  cv.rect(g.x - h, g.y - h, g.x + h, g.y + h, COLORS.black, 4);
+  cv.rect(g.x - h, g.y - h, g.x + h, g.y + h, col, 2);
+  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) cv.line(g.x + dx * h, g.y + dy * h, g.x + dx * h * 0.75, g.y + dy * h * 0.75, col, 2);
+  cv.text(g.x - h, g.y - h - 22, v.state, col, 3);
+
+  // predicted path of the target and the intercept point
+  if (v.target && v.aim) {
+    v.path.forEach((p, i) => { if (i % 2 === 0) cv.dot(p.x, p.y, COLORS.lock, 3); });
+    cv.line(v.sight.x, v.sight.y, v.aim.x, v.aim.y, CYAN, 1);
+    cv.line(v.aim.x - 8, v.aim.y - 8, v.aim.x + 8, v.aim.y + 8, MAGENTA, 3);
+    cv.line(v.aim.x - 8, v.aim.y + 8, v.aim.x + 8, v.aim.y - 8, MAGENTA, 3);
+    cv.text(v.aim.x + 12, v.aim.y + 10, v.aim.reachable ? `T-${(v.aim.t / 30).toFixed(1)}S` : 'CHASE', MAGENTA, 2);
+  }
+
+  // the sight
+  cv.crosshair(v.sight.x, v.sight.y, 16, v.hit ? COLORS.search : CYAN);
+  if (v.hit) { cv.circle(v.sight.x, v.sight.y, 30, COLORS.search, 3); cv.text(v.sight.x + 34, v.sight.y - 30, 'HIT', COLORS.search, 4); }
+
+  const t = v.target ? `TARGET ${Math.round(v.target.speed)} PX/S  SIGHT ${Math.round(v.sightSpeed)} PX/S (${ratio}X)` : 'WATCHING THE CENTRE';
+  cv.text(16, H - 36, `SEEKER  ${v.state}  ${t}  HITS ${v.hits}`, COLORS.white, 3);
 }

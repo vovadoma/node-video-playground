@@ -283,13 +283,8 @@ function json(res: ServerResponse, body: unknown) {
 
 // ---------------------------------------------------------------- the page (plain HTML + JS, no build)
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
-
-function renderPage({ title, subtitle, controlsHtml, flow }: LiveOptions): string {
-  return /* html */ `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)}</title>
-<style>
+/** Page styles shared by the live examples (and the WebRTC pages). */
+export const LIVE_CSS = `
   :root { --bg:#f6f7f9; --surface:#fff; --border:#e5e7eb; --text:#111827; --muted:#6b7280; --accent:#2563eb; --soft:#eff6ff; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0b1120; --surface:#111827; --border:#1f2937; --text:#f3f4f6; --muted:#9ca3af; --accent:#3b82f6; --soft:#172554; } }
   * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system,"Segoe UI",Inter,Arial,sans-serif; }
@@ -316,7 +311,16 @@ function renderPage({ title, subtitle, controlsHtml, flow }: LiveOptions): strin
   th { color:var(--muted); font-weight:600 } td.num { font-variant-numeric:tabular-nums }
   .live { color:var(--accent); font-weight:600 }
   @media (max-width:720px) { header div, main { padding:12px 16px } select, select#file { min-width:0; width:100% } label { width:100% } }
-</style></head>
+`;
+
+const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
+function renderPage({ title, subtitle, controlsHtml, flow }: LiveOptions): string {
+  return /* html */ `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(title)}</title>
+<style>
+${LIVE_CSS}</style></head>
 <body>
 <header><div>
   <h1>${esc(title)}</h1>

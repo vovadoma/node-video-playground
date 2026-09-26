@@ -21,8 +21,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SAMPLES_DIR } from '../src/lib/config.js';
-import { Canvas, COLORS, rgb } from '../src/lib/draw.js';
-import { Seeker, type SeekerView } from '../src/lib/intercept.js';
+import { Canvas } from '../src/lib/draw.js';
+import { drawSeeker, Seeker, type SeekerView } from '../src/lib/intercept.js';
 import { startLiveServer } from '../src/lib/live.js';
 import { throughProcess } from '../src/lib/rawframes.js';
 
@@ -33,38 +33,6 @@ const INJECTOR = path.join(HERE, 'processes', 'target-injector.ts');
 const SPEEDS = [300, 420, 600];                 // target px/s
 const RATIOS = [0.4, 0.6, 0.8, 1, 1.2];         // sight speed / target speed
 const SIZES: Record<string, number> = { small: 8, medium: 12, large: 18 };   // ball radius px
-
-const CYAN = rgb(34, 211, 238), MAGENTA = rgb(217, 70, 239), GREY = rgb(156, 163, 175);
-const GATE_COLOR = { WATCH: COLORS.white, CAPTURED: COLORS.lock, COAST: COLORS.lost, RETURN: GREY } as const;
-
-/** Everything drawn here comes from the seeker's view — i.e. from pixels only. */
-function draw(v: SeekerView, W: number, H: number, ratio: number, debug: boolean) {
-  const cv = new Canvas(v.frame, W, H);
-  if (debug) for (const b of v.blobs) cv.brackets(b.minX * 4 - 3, b.minY * 4 - 3, (b.maxX + 1) * 4 + 3, (b.maxY + 1) * 4 + 3, COLORS.white, 1, 0.35);
-
-  // the gate: a square with tick marks in the middle of each side
-  const g = v.gate, h = g.size / 2, col = GATE_COLOR[v.state];
-  cv.rect(g.x - h, g.y - h, g.x + h, g.y + h, COLORS.black, 4);
-  cv.rect(g.x - h, g.y - h, g.x + h, g.y + h, col, 2);
-  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) cv.line(g.x + dx * h, g.y + dy * h, g.x + dx * h * 0.75, g.y + dy * h * 0.75, col, 2);
-  cv.text(g.x - h, g.y - h - 22, v.state, col, 3);
-
-  // predicted path of the target and the intercept point
-  if (v.target && v.aim) {
-    v.path.forEach((p, i) => { if (i % 2 === 0) cv.dot(p.x, p.y, COLORS.lock, 3); });
-    cv.line(v.sight.x, v.sight.y, v.aim.x, v.aim.y, CYAN, 1);
-    cv.line(v.aim.x - 8, v.aim.y - 8, v.aim.x + 8, v.aim.y + 8, MAGENTA, 3);
-    cv.line(v.aim.x - 8, v.aim.y + 8, v.aim.x + 8, v.aim.y - 8, MAGENTA, 3);
-    cv.text(v.aim.x + 12, v.aim.y + 10, v.aim.reachable ? `T-${(v.aim.t / 30).toFixed(1)}S` : 'CHASE', MAGENTA, 2);
-  }
-
-  // the sight
-  cv.crosshair(v.sight.x, v.sight.y, 16, v.hit ? COLORS.search : CYAN);
-  if (v.hit) { cv.circle(v.sight.x, v.sight.y, 30, COLORS.search, 3); cv.text(v.sight.x + 34, v.sight.y - 30, 'HIT', COLORS.search, 4); }
-
-  const t = v.target ? `TARGET ${Math.round(v.target.speed)} PX/S  SIGHT ${Math.round(v.sightSpeed)} PX/S (${ratio}X)` : 'WATCHING THE CENTRE';
-  cv.text(16, H - 36, `SEEKER  ${v.state}  ${t}  HITS ${v.hits}`, COLORS.white, 3);
-}
 
 const select = (param: string, options: [string, string][], selected: string) =>
   `<select data-param="${param}">${options.map(([v, l]) => `<option value="${v}"${v === selected ? ' selected' : ''}>${l}</option>`).join('')}</select>`;
@@ -107,7 +75,7 @@ await startLiveServer({
         const t0 = performance.now();
         view = seeker.push(frame);               // process B: pixels in, decisions out
         if (!view) return null;
-        draw(view, W, H, ratio, debug);
+        drawSeeker(new Canvas(view.frame, W, H), view, ratio, debug);
         cost = cost * 0.9 + (performance.now() - t0) * 0.1;
         const t = truth.get(view.index);
         if (t && (view.state === 'CAPTURED' || view.state === 'COAST')) {

@@ -23,12 +23,15 @@
     "track-analyze": "tsx examples/12-track-analyze.ts",
     "track-live": "tsx examples/13-track-live.ts",
     "intercept": "tsx examples/14-intercept.ts",
+    "webrtc": "tsx examples/15-webrtc-wrtc.ts",
     "samples": "tsx scripts/make-samples.ts",
     "web": "tsx web/server.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "execa": "^9.5.2"
+    "@roamhq/wrtc": "^0.10.0",
+    "execa": "^9.5.2",
+    "werift": "^0.24.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

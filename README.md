@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-14-2563eb?style=flat-square"></a>
+  <a href="#examples"><img alt="examples" src="https://img.shields.io/badge/examples-15-2563eb?style=flat-square"></a>
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2020-2563eb?style=flat-square&logo=node.js&logoColor=white">
   <img alt="typescript" src="https://img.shields.io/badge/TypeScript-5.x-2563eb?style=flat-square&logo=typescript&logoColor=white">
   <img alt="ffmpeg" src="https://img.shields.io/badge/ffmpeg-9.x-2563eb?style=flat-square&logo=ffmpeg&logoColor=white">
@@ -36,7 +36,7 @@ npm run audio                    # EBU R128 loudness + loudnorm on a real voice 
 npm run web                      # browse & play every sample at http://127.0.0.1:3000
 ```
 
-**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional.
+**Requirements:** Node ≥ 20 and `ffmpeg` / `ffprobe` on `PATH` (`brew install ffmpeg`) with libx264, libx265, libvpx, libaom. `libvmaf` is optional. Examples 15–16 add `@roamhq/wrtc` (prebuilt libwebrtc addon) and `werift`; they run on localhost only (for other machines you'd need HTTPS, STUN and possibly TURN).
 
 ## Test media
 
@@ -69,6 +69,7 @@ Two video outputs are too big for GitHub and are git-ignored (ProRes 422 HQ `.mo
 | 12 | `npm run track-analyze -- [file]` | **Find a small, fast-moving object offline**, in three passes over raw frames (plain TypeScript, no OpenCV): 1) per-pixel flicker map → mask; 2) three-frame difference on Y+U+V → blobs → α-β tracks (bouncing off frame edges) → rank by small × fast × long-lived × alone, re-joining pieces of one object; 3) render `output/tracker/analysis.mp4`, `trajectories.png`, `motion-heatmap.png` and write `profile.json` |
 | 13 | `npm run track-live` → <http://127.0.0.1:3013> | **Follow it live with a crosshair**: file stream → ffmpeg decodes to raw yuv420p → Node detects, tracks and matches the profile from 12 (SEARCH → LOCK → LOST/predict) and draws the crosshair into the pixels → second ffmpeg encodes → browser. ~4 ms per 720p frame; pick another candidate or show every detection |
 | 14 | `npm run intercept` → <http://127.0.0.1:3014> | **Two independent processes, one video**: process A (`examples/processes/target-injector.ts`, a child process) paints a ball that starts at a random point in a random direction and bounces off the edges; process B (`src/lib/intercept.ts`) sees only the resulting pixels — spots a small moving blob in the centre square, captures it and keeps it in the square, and steers a sight at `ratio` × the ball's measured speed to an intercept point on the predicted (bouncing) path. A's true positions (stderr) are used only to score B |
+| 15 | `npm run webrtc` → <http://127.0.0.1:3015> | **WebRTC echo on Node with `@roamhq/wrtc`** (libwebrtc as an addon): the browser sends its camera or a sample video, Node returns it — `forward` (the received track sent straight back), `frames` (through Node untouched), `effects`, `watermark` or `tracker` (the seeker from 14), switched live over a DataChannel. `RTCVideoSink`/`RTCVideoSource` give raw I420 frames, so all the drawing code works as is. The page stamps a timestamp into each frame and reads it back → real round-trip latency per mode |
 
 Any script also runs directly: `npx tsx examples/03-transcode.ts input.mov`. Results land in `./output/` (git-ignored).
 
@@ -166,8 +167,11 @@ src/lib/
   rawframes.ts decodeFrames() / encodeFrames(): video ⇄ raw yuv420p frames as Node Buffers · stillFrames() · throughProcess()
   motion.ts    motion detection & tracking: three-frame difference, blobs, α-β tracker, scoring, TargetTracker
   draw.ts      drawing into yuv420p: lines, circles, crosshair, brackets, a 3×5 pixel font
-  intercept.ts Seeker: capture gate + slower sight flying to the intercept point (pixels only)
-examples/      01…14, one topic per file, numbered in learning order
+  intercept.ts Seeker: capture gate + slower sight flying to the intercept point (pixels only) · drawSeeker()
+  i420.ts      I420 frame effects (gray, negate, mirror, edges), PNG overlay blending, latency stamp
+  rtc-modes.ts what the WebRTC examples do to a frame, per mode
+  rtc-server.ts server + page for 15/16: signalling (one POST), sample source, stats, latency measurement
+examples/      01…15, one topic per file, numbered in learning order
 scripts/       make-samples.ts — regenerates the sample matrix with ffmpeg
 web/           server.ts entry · engine/ (router, Range files, SSE) · system/ (ffmpeg check) · catalog/ (ffprobe scan, playability rules) · examples/ (discover & run examples) · routes.ts · public/ (UI, no build)
 samples/       test media — video (samples/README.md) and audio (samples/audio/README.md) catalogs
